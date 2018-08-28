@@ -1,0 +1,4 @@
+table Foo {
+    id: ulong;
+    text: string;
+}

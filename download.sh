@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+
+# ObjectBox libraries are hosted in a Conan repository on Bintray:
+# This script downloads the current version of the library and extracts/installs it locally.
+# The download happens in a "download" directory.
+# After download and extraction, the script asks if the lib should be installed in /usr/local/lib.
+
+set -e
+
+version=0.1
+hash=4db1be536558d833e52e862fd84d64d75c2b3656
+downloadDir=download
+baseName=libobjectbox-${version}-${hash}
+archiveFile=${downloadDir}/${baseName}.tgz
+targetDir=${downloadDir}/${baseName}
+
+echo "Downloading ObjectBox library version ${version} (${hash})..."
+mkdir -p "${downloadDir}"
+
+#wget too verbose with redirects, thus quiet it
+wget --quiet -O "${archiveFile}" \
+    "https://dl.bintray.com/objectbox/conan/objectbox/objectbox-c/${version}/testing/package/${hash}/conan_package.tgz"
+echo "Downloaded:"
+du -h "${archiveFile}"
+
+echo
+echo "Extracting into ${targetDir}..."
+mkdir -p "${targetDir}"
+tar -xzf "${archiveFile}" -C "${targetDir}"
+
+read -p "OK. Do you want to install the library into /usr/local/lib? [y/N] " -r
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    # TODO sudo is not be available on all platforms - provide an alternative
+    sudo cp ${targetDir}/lib/* /usr/local/lib
+    sudo ldconfig /usr/local/lib
+    echo "Installed objectbox libraries:"
+    ldconfig -p | grep objectbox
+fi

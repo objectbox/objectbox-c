@@ -7,9 +7,29 @@
 
 set -e
 
-version=0.1
-hash=4db1be536558d833e52e862fd84d64d75c2b3656
+arch=$(uname -m)
+os=$(uname)
+echo "Detected ${os} running on ${arch}"
+
 downloadDir=download
+version=0.1
+
+while getopts v:d: opt
+do
+   case $opt in
+       d) downloadDir=$OPTARG;;
+       v) version=$OPTARG;;
+   esac
+done
+
+key=${os}::${arch}::${version}
+hash=$(grep "${key}" $0 | awk '{print $NF}')
+if [ -z "$hash" ]; then
+    echo "Error: the configuration ${key} is unsupported (no Conan hash registered)."
+    echo "Please update this script. If you already did, it seems this configuration is not yet supported."
+    exit 1
+fi
+
 baseName=libobjectbox-${version}-${hash}
 archiveFile=${downloadDir}/${baseName}.tgz
 targetDir=${downloadDir}/${baseName}
@@ -17,9 +37,17 @@ targetDir=${downloadDir}/${baseName}
 echo "Downloading ObjectBox library version ${version} (${hash})..."
 mkdir -p "${downloadDir}"
 
-#wget too verbose with redirects, thus quiet it
-wget --quiet -O "${archiveFile}" \
-    "https://dl.bintray.com/objectbox/conan/objectbox/objectbox-c/${version}/testing/package/${hash}/conan_package.tgz"
+
+#wget too verbose with redirects, pipe and grep only errors
+wget -O "${archiveFile}" \
+  "https://dl.bintray.com/objectbox/conan/objectbox/objectbox-c/${version}/testing/package/${hash}/conan_package.tgz" \
+  2>&1 | grep -i "HTTP request sent\|failed\|error"
+
+if [[ ! -s ${archiveFile} ]]; then
+    echo "Error: download failed"
+    exit 1
+fi
+
 echo "Downloaded:"
 du -h "${archiveFile}"
 
@@ -36,3 +64,6 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo "Installed objectbox libraries:"
     ldconfig -p | grep objectbox
 fi
+
+# Known Conan hashes; this script will grep for those
+# Linux::x86_64::0.1 4db1be536558d833e52e862fd84d64d75c2b3656

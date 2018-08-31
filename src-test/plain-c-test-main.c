@@ -37,11 +37,12 @@ OBX_model* createModel() {
 int testVersion() {
     if (obx_version_is_at_least(999, 0, 0)) return 999;
     if (obx_version_is_at_least(OBX_VERSION_MAJOR, OBX_VERSION_MINOR, OBX_VERSION_PATCH + 1)) return 1;
-    if (!obx_version_is_at_least(0, 1, 0)) return 010;
-    if (!obx_version_is_at_least(0, 0, 1)) return 001;
+    if (!obx_version_is_at_least(OBX_VERSION_MAJOR, OBX_VERSION_MINOR, OBX_VERSION_PATCH)) return 2;
+    if (!obx_version_is_at_least(0, 1, 0)) return 3;
+    if (!obx_version_is_at_least(0, 0, 1)) return 4;
     int major = 99, minor = 99, patch = 99;
     obx_version(&major, &minor, &patch);
-    if (major != OBX_VERSION_MAJOR || minor != OBX_VERSION_MINOR || patch != OBX_VERSION_PATCH) return 1;
+    if (major != OBX_VERSION_MAJOR || minor != OBX_VERSION_MINOR || patch != OBX_VERSION_PATCH) return 5;
     return 0;
 }
 

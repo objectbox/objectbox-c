@@ -33,15 +33,18 @@ fi
 baseName=libobjectbox-${version}-${hash}
 archiveFile=${downloadDir}/${baseName}.tgz
 targetDir=${downloadDir}/${baseName}
+remoteRepo="https://dl.bintray.com/objectbox/conan/objectbox/objectbox-c"
+downloadUrl="${remoteRepo}/${version}/testing/package/${hash}/conan_package.tgz"
 
 echo "Downloading ObjectBox library version ${version} (${hash})..."
 mkdir -p "${downloadDir}"
 
-
-#wget too verbose with redirects, pipe and grep only errors
-wget -O "${archiveFile}" \
-  "https://dl.bintray.com/objectbox/conan/objectbox/objectbox-c/${version}/testing/package/${hash}/conan_package.tgz" \
-  2>&1 | grep -i "HTTP request sent\|failed\|error"
+if [ -x "$(command -v curl)" ]; then
+    curl -o "${archiveFile}" "${downloadUrl}"
+else
+    #wget too verbose with redirects, pipe and grep only errors
+    wget -O "${archiveFile}" "${downloadUrl}" 2>&1 | grep -i "HTTP request sent\|failed\|error"
+fi
 
 if [[ ! -s ${archiveFile} ]]; then
     echo "Error: download failed"
@@ -67,3 +70,4 @@ fi
 
 # Known Conan hashes; this script will grep for those
 # Linux::x86_64::0.1 4db1be536558d833e52e862fd84d64d75c2b3656
+# MINGW64_NT-10.0::x86_64::0.1 ca33edce272a279b24f87dc0d4cf5bbdcffbc187

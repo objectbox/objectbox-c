@@ -1,5 +1,5 @@
 from conans import ConanFile, tools
-
+import os.path
 
 class ObjectboxC(ConanFile):
     name = "objectbox-c"
@@ -9,22 +9,33 @@ class ObjectboxC(ConanFile):
     url = "https://github.com/objectbox/objectbox-c"
     license = "Apache-2"
 
+    # Defaults for Linux, Mac, etc.
     obxBuildDir = "../cbuild/Release/objectbox-c"
     obxTestExe = obxBuildDir + "/objectbox-c-test"
     obxLibSo = obxBuildDir + "/libobjectboxc.so"
     obxLibDy = obxBuildDir + "/libobjectboxc.so"
+    obxLibDll = ""
 
     def package(self):
-        self.run("./build.sh release", cwd="..")
+        if self.settings.os == "Windows":
+            self.obxBuildDir = "../visual-studio/x64/Release"
+            self.obxLibDll = self.obxBuildDir + "/objectbox-c.dll"
+            if not os.path.isfile(self.obxLibDll):
+                raise Exception("DLL does not exist: " + self.obxLibDll)
+        else:
+            self.run("./build.sh release", cwd="..")
+
         self.copy("include/*.h")
         self.copy(self.obxLibSo, dst="lib")
         self.copy(self.obxLibDy, dst="lib")
+        self.copy(self.obxLibDll, dst="lib")
 
     def package_info(self):
         self.cpp_info.libs = tools.collect_libs(self)
 
     def test(self):
-        self.run("pwd")  # directory is build/_hash_, thus go up 2 additional levels
-        exe = "../../" + self.obxTestExe
-        self.run("ls -l " + exe)
-        self.run(exe)
+        if self.settings.os != "Windows":
+            self.run("pwd")  # directory is build/_hash_, thus go up 2 additional levels
+            exe = "../../" + self.obxTestExe
+            self.run("ls -l " + exe)
+            self.run(exe)

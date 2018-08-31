@@ -4,6 +4,9 @@
 # This script downloads the current version of the library and extracts/installs it locally.
 # The download happens in a "download" directory.
 # After download and extraction, the script asks if the lib should be installed in /usr/local/lib.
+#
+# Windows note: to run this script you need to install a bash like "Git Bash".
+# Plain MINGW64, Cygwin, etc. might work too, but was not tested.
 
 set -e
 
@@ -39,6 +42,7 @@ downloadUrl="${remoteRepo}/${version}/testing/package/${hash}/conan_package.tgz"
 echo "Downloading ObjectBox library version ${version} (${hash})..."
 mkdir -p "${downloadDir}"
 
+# Support both curl and wget because their availability is platform dependent
 if [ -x "$(command -v curl)" ]; then
     curl -o "${archiveFile}" "${downloadUrl}"
 else
@@ -58,6 +62,15 @@ echo
 echo "Extracting into ${targetDir}..."
 mkdir -p "${targetDir}"
 tar -xzf "${archiveFile}" -C "${targetDir}"
+
+if [[ ${os} == MINGW* ]] || [[ ${os} == CYGWIN* ]]; then
+    echo "OK. The ObjectBox dll is available here:"
+    dllFullPath=$(realpath ${targetDir}/lib/objectbox-c.dll)
+    echo "${dllFullPath}"
+    echo "And with backslashes:"
+    echo "${dllFullPath}" | tr '/' '\\'
+    exit 0 # Done, the remainder of the script is non-Windows
+fi
 
 read -p "OK. Do you want to install the library into /usr/local/lib? [y/N] " -r
 if [[ $REPLY =~ ^[Yy]$ ]]; then

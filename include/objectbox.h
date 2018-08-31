@@ -21,7 +21,7 @@
 // * methods: obx_thing_action()
 // * structs: OBX_thing {}
 // * error codes: OBX_ERROR_REASON
-// * enums: ?
+// * enums: TODO
 //
 
 #ifndef OBJECTBOX_H
@@ -29,6 +29,30 @@
 
 #include <stdint.h>
 #include <stdio.h>
+
+//----------------------------------------------
+// ObjectBox version codes
+//----------------------------------------------
+
+// Note that you should use methods with prefix obx_version_ to check when linking against the dynamic library
+#define OBX_VERSION_MAJOR 0
+#define OBX_VERSION_MINOR 1
+#define OBX_VERSION_PATCH 0
+
+/// Returns the version of the library as ints. Pointers may be null
+void obx_version(int* major, int* minor, int* patch);
+
+/// Checks if the version of the library is equal to or higher than the given version ints.
+/// @returns 1 if the condition is met and 0 otherwise
+int obx_version_is_at_least(int major, int minor, int patch);
+
+/// Returns the version of the library to be printed.
+/// The format may change; to query for version use the int based methods instead.
+const char* obx_version_string();
+
+/// Returns the version of the ObjectBox core to be printed.
+/// The format may change, do not rely on its current form.
+const char* obx_version_core_string();
 
 //----------------------------------------------
 // Return codes

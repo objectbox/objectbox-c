@@ -5,7 +5,8 @@
 #include "c_test_objects.h"
 
 int printError() {
-    printf("Unexpected error: %d, %d (%s)\n", obx_last_error_code(), obx_last_error_secondary(), obx_last_error_message());
+    printf("Unexpected error: %d, %d (%s)\n", obx_last_error_code(), obx_last_error_secondary(),
+           obx_last_error_message());
     return obx_last_error_code();
 }
 
@@ -31,6 +32,17 @@ OBX_model* createModel() {
 
     obx_model_last_entity_id(model, 1, fooUid);
     return model;
+}
+
+int testVersion() {
+    if (obx_version_is_at_least(999, 0, 0)) return 999;
+    if (obx_version_is_at_least(OBX_VERSION_MAJOR, OBX_VERSION_MINOR, OBX_VERSION_PATCH + 1)) return 1;
+    if (!obx_version_is_at_least(0, 1, 0)) return 010;
+    if (!obx_version_is_at_least(0, 0, 1)) return 001;
+    int major = 99, minor = 99, patch = 99;
+    obx_version(&major, &minor, &patch);
+    if (major != OBX_VERSION_MAJOR || minor != OBX_VERSION_MINOR || patch != OBX_VERSION_PATCH) return 1;
+    return 0;
 }
 
 int testOpenWithNullBytesError() {
@@ -256,7 +268,12 @@ int testQueryFlatObjects(OBX_cursor* cursor) {
 }
 
 int main(int argc, char* args[]) {
-    int rc = testOpenWithNullBytesError();
+    printf("Testing libobjectbox version %s, core version: %s\n", obx_version_string(), obx_version_core_string());
+
+    int rc = testVersion();
+    if (rc) return rc;
+
+    rc = testOpenWithNullBytesError();
     if (rc) return rc;
 
     OBX_model* model = createModel();

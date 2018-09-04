@@ -1,3 +1,6 @@
+from shutil import copy2, rmtree
+from tempfile import mkdtemp
+
 from conans import ConanFile, tools
 import os.path
 
@@ -12,23 +15,28 @@ class ObjectboxC(ConanFile):
     # Defaults for Linux, Mac, etc.
     obxBuildDir = "../cbuild/Release/objectbox-c"
     obxTestExe = obxBuildDir + "/objectbox-c-test"
-    obxLibSo = obxBuildDir + "/libobjectbox.so"
-    obxLibDy = obxBuildDir + "/libobjectbox.so"
-    obxLibDll = ""
 
     def package(self):
         if self.settings.os == "Windows":
             self.obxBuildDir = "../visual-studio/x64/Release"
-            self.obxLibDll = self.obxBuildDir + "/objectbox.dll"
-            if not os.path.isfile(self.obxLibDll):
-                raise Exception("DLL does not exist: " + self.obxLibDll)
+            dll_src = self.obxBuildDir + "/objectbox-c.dll"
+            if not os.path.isfile(dll_src):
+                raise Exception("DLL does not exist: " + dll_src)
+
+            # lib name differs in VS build, thus copy it to temp dir with the correct name for packaging
+            temp_dir = mkdtemp()
+            dll_dst = temp_dir + "/objectbox.dll"
+            copy2(dll_src, dll_dst)
+
+            self.copy(dll_dst, dst="lib")
+            rmtree(temp_dir)
         else:
             self.run("./build.sh release", cwd="..")
+            self.copy(self.obxBuildDir + "/libobjectbox.so", dst="lib")
+            self.copy(self.obxBuildDir + "/libobjectbox.dylib", dst="lib")
 
+        # Platform independent
         self.copy("include/*.h")
-        self.copy(self.obxLibSo, dst="lib")
-        self.copy(self.obxLibDy, dst="lib")
-        self.copy(self.obxLibDll, dst="lib")
 
     def package_info(self):
         self.cpp_info.libs = tools.collect_libs(self)

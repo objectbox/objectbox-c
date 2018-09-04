@@ -12,14 +12,14 @@ class ObjectboxC(ConanFile):
     # Defaults for Linux, Mac, etc.
     obxBuildDir = "../cbuild/Release/objectbox-c"
     obxTestExe = obxBuildDir + "/objectbox-c-test"
-    obxLibSo = obxBuildDir + "/libobjectboxc.so"
-    obxLibDy = obxBuildDir + "/libobjectboxc.so"
+    obxLibSo = obxBuildDir + "/libobjectbox.so"
+    obxLibDy = obxBuildDir + "/libobjectbox.so"
     obxLibDll = ""
 
     def package(self):
         if self.settings.os == "Windows":
             self.obxBuildDir = "../visual-studio/x64/Release"
-            self.obxLibDll = self.obxBuildDir + "/objectbox-c.dll"
+            self.obxLibDll = self.obxBuildDir + "/objectbox.dll"
             if not os.path.isfile(self.obxLibDll):
                 raise Exception("DLL does not exist: " + self.obxLibDll)
         else:

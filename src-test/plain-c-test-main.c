@@ -95,24 +95,6 @@ int testCursorStuff(OBX_cursor* cursor) {
     return OBX_SUCCESS;
 }
 
-int testSimpleQueryNoData(OBX_cursor* cursor) {
-    OBX_table_array* tableArray = obx_simple_query_string(cursor, 2, "dummy", (uint32_t) strlen("dummy"));
-    if (!tableArray) {
-        printf("Query failed\n");
-        return -99;
-    }
-    if (tableArray->tables) {
-        printf("Query tables value\n");
-        return -98;
-    }
-    if (tableArray->size) {
-        printf("Query table size value\n");
-        return -98;
-    }
-    obx_table_array_destroy(tableArray);
-    return OBX_SUCCESS;
-}
-
 int testQueryNoData(OBX_cursor* cursor) {
     OBX_bytes_array* bytesArray = obx_query_by_string(cursor, 2, "dummy");
     if (!bytesArray) {
@@ -289,8 +271,6 @@ int main(int argc, char* args[]) {
     // Clear any existing data
     if (obx_cursor_remove_all(cursor)) { return printError(); }
 
-    rc = testSimpleQueryNoData(cursor);
-    if (rc) return rc;
     rc = testQueryNoData(cursor);
     if (rc) return rc;
 

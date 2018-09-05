@@ -228,13 +228,6 @@ struct OBX_bytes_array {
 };
 typedef struct OBX_bytes_array OBX_bytes_array;
 
-struct OBX_table_array {
-    void* tables;
-    size_t size;
-};
-typedef struct OBX_table_array OBX_table_array;
-
-
 OBX_store* obx_store_open_bytes(const void* modelBytes, size_t modelSize, const OBX_store_options* options);
 
 /// Note: the model is destroyed by calling this method
@@ -311,14 +304,10 @@ int obx_box_put_async(OBX_box* box, uint64_t entityId, const void* data, size_t 
 // Query
 //----------------------------------------------
 
-OBX_table_array* obx_simple_query_string(OBX_cursor* cursor, uint32_t propertyId, const char* value, uint32_t valueSize);
-
 OBX_bytes_array* obx_query_by_string(OBX_cursor* cursorStruct, uint32_t propertyId, const char* value);
 
 void obx_bytes_destroy(OBX_bytes* bytes);
 
 void obx_bytes_array_destroy(OBX_bytes_array* bytesArray);
-
-void obx_table_array_destroy(OBX_table_array* tableArray);
 
 #endif //OBJECTBOX_H

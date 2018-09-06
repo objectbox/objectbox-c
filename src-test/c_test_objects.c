@@ -41,6 +41,7 @@ int put_foo(OBX_cursor* cursor, uint64_t* idInOut, char* text) {
     if (!buffer) goto err;
     rc = obx_cursor_put(cursor, id, buffer, size, checkForPreviousValueFlag);
     if (rc) goto err;
+    flatcc_builder_clear(&builder);
     *idInOut = id;
     return 0;
 

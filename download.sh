@@ -44,14 +44,14 @@ mkdir -p "${downloadDir}"
 
 # Support both curl and wget because their availability is platform dependent
 if [ -x "$(command -v curl)" ]; then
-    curl -o "${archiveFile}" "${downloadUrl}"
+    curl -L -o "${archiveFile}" "${downloadUrl}"
 else
     #wget too verbose with redirects, pipe and grep only errors
     wget -O "${archiveFile}" "${downloadUrl}" 2>&1 | grep -i "HTTP request sent\|failed\|error"
 fi
 
 if [[ ! -s ${archiveFile} ]]; then
-    echo "Error: download failed"
+    echo "Error: download failed (file ${archiveFile} does not exist or is empty)"
     exit 1
 fi
 
@@ -70,6 +70,20 @@ if [[ ${os} == MINGW* ]] || [[ ${os} == CYGWIN* ]]; then
     echo "And with backslashes:"
     echo "${dllFullPath}" | tr '/' '\\'
     exit 0 # Done, the remainder of the script is non-Windows
+fi
+
+if [[ ! -d "lib" ]]; then
+    mkdir lib
+    cp ${targetDir}/lib/* lib/
+    echo "Copied to local lib directory:"
+    ls -l lib/
+else
+    read -p "Local lib directory already exists. Copy the just downloaded library to it? [Y/n] " -r
+    if [[ $REPLY =~ ^[Yy]$ ]] || [[ -z "$REPLY" ]] ; then
+        cp ${targetDir}/lib/* lib/
+        echo "Copied; contents of the local lib directory:"
+        ls -l lib/
+    fi
 fi
 
 read -p "OK. Do you want to install the library into /usr/local/lib? [y/N] " -r

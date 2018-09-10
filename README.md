@@ -25,7 +25,7 @@ The C API is bytes based, so you can build and read Flatbuffers table in your la
 Usage and Installation
 ----------------------
 The C API comes as a single header in the [include/objectbox.h](include/objectbox.h) file.
-Compile your code against it and use the binary library to link against.
+Compile your code against it and use the binary library (.so, .dylib, .dll depending on the platform) to link against.
   
 There are a couple of ways to get the library:
 
@@ -52,3 +52,20 @@ which deeply integrate into the language using e.g. [@Entity annotations](https:
 Instead, the C API is leaves more tasks to the developer.
 For example, you have to [create a FlatBuffers schema](https://google.github.io/flatbuffers/flatbuffers_guide_writing_schema.html) and build a corresponding ObjectBox model separately.
 While we might combine the two and provide more convenience in the future, the current version requires some boiler plate code.
+
+License
+-------
+    Copyright 2018 ObjectBox Ltd. All rights reserved.
+    
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+    
+        http://www.apache.org/licenses/LICENSE-2.0
+    
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+

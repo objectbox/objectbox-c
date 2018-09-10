@@ -16,12 +16,12 @@ extern "C" {
 #include <string.h>
 #include <assert.h>
 
-#include "flatcc_rtconfig.h"
-#include "flatcc_builder.h"
-#include "flatcc_unaligned.h"
+#include "flatcc/flatcc_rtconfig.h"
+#include "flatcc/flatcc_builder.h"
+#include "flatcc/flatcc_unaligned.h"
 
 #define PDIAGNOSTIC_IGNORE_UNUSED
-#include "portable/pdiagnostic_push.h"
+#include "flatcc/portable/pdiagnostic_push.h"
 
 enum flatcc_json_parser_flags {
     flatcc_json_parser_f_skip_unknown = 1,
@@ -871,7 +871,7 @@ int flatcc_json_parser_struct_as_root(flatcc_builder_t *B, flatcc_json_parser_t 
         const char *buf, size_t bufsiz, int flags, const char *fid,
         flatcc_json_parser_struct_f *parser);
 
-#include "portable/pdiagnostic_pop.h"
+#include "flatcc/portable/pdiagnostic_pop.h"
 
 #ifdef __cplusplus
 }

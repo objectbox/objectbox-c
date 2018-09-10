@@ -19,11 +19,11 @@ extern "C" {
 #ifdef FLATCC_PORTABLE
 #include "flatcc/flatcc_portable.h"
 #endif
-#include "portable/pwarnings.h"
+#include "flatcc/portable/pwarnings.h"
 /* Needed by C99 compilers without FLATCC_PORTABLE. */
-#include "portable/pstdalign.h"
+#include "flatcc/portable/pstdalign.h"
 
-#include "flatcc_alloc.h"
+#include "flatcc/flatcc_alloc.h"
 
 #define __FLATBUFFERS_PASTE2(a, b) a ## b
 #define __FLATBUFFERS_PASTE3(a, b, c) a ## b ## c
@@ -33,10 +33,10 @@ extern "C" {
  * "flatcc_endian.h" requires the preceeding include files,
  * or compatible definitions.
  */
-#include "portable/pendian.h"
-#include "flatcc_types.h"
-#include "flatcc_endian.h"
-#include "flatcc_identifier.h"
+#include "flatcc/portable/pendian.h"
+#include "flatcc/flatcc_types.h"
+#include "flatcc/flatcc_endian.h"
+#include "flatcc/flatcc_identifier.h"
 
 #ifndef FLATBUFFERS_WRAP_NAMESPACE
 #define FLATBUFFERS_WRAP_NAMESPACE(ns, x) ns ## _ ## x

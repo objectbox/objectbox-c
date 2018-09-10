@@ -43,7 +43,8 @@ Details on the download.sh script:
 
 Examples & API Documentation
 ----------------------------
-TODO
+Documentation is still on-going work.
+To get started, please have a look at the [tasks example](examples/tasks).
 
 Current state
 -------------

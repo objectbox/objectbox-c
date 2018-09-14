@@ -4,6 +4,8 @@
 #include "c_test_builder.h"
 #include "c_test_objects.h"
 
+#include "query-test.h"
+
 int printError() {
     printf("Unexpected error: %d, %d (%s)\n", obx_last_error_code(), obx_last_error_secondary(),
            obx_last_error_message());
@@ -21,10 +23,10 @@ OBX_model* createModel() {
     uint64_t textUid = uid++;
 
     if (obx_model_entity(model, "Foo", 1, fooUid)
-        || obx_model_property(model, "id", PropertyType_Long, 1, idUid)
+        || obx_model_property(model, "id", PropertyType_Long, FOO_prop_id, idUid)
         || obx_model_property_flags(model, PropertyFlags_ID)
-        || obx_model_property(model, "text", PropertyType_String, 2, textUid)
-        || obx_model_entity_last_property_id(model, 2, textUid)) {
+        || obx_model_property(model, "text", PropertyType_String, FOO_prop_text, textUid)
+        || obx_model_entity_last_property_id(model, FOO_prop_text, textUid)) {
 
         obx_model_destroy(model);
         return NULL;
@@ -62,15 +64,15 @@ int testOpenWithNullBytesError() {
 
 int testCursorStuff(OBX_cursor* cursor) {
     uint64_t id = obx_cursor_id_for_put(cursor, 0);
-    if (!id) { return printError(); }
+    if (!id) return printError();
     const char* hello = "Hello C!\0\0\0\0"; // Trailing zeros as padding (put rounds up to next %4 length)
     printf("Putting data at ID %ld\n", (long) id);
     size_t size = strlen(hello) + 1;
-    if (obx_cursor_put(cursor, id, hello, size, 0)) { return printError(); }
+    if (obx_cursor_put(cursor, id, hello, size, 0)) return printError();
 
     void* dataRead;
     size_t sizeRead;
-    if (obx_cursor_get(cursor, id, &dataRead, &sizeRead)) { return printError(); }
+    if (obx_cursor_get(cursor, id, &dataRead, &sizeRead)) return printError();
     printf("Data read from ID %ld: %s\n", (long) id, (char*) dataRead);
 
     int rc = obx_cursor_get(cursor, id + 1, &dataRead, &sizeRead);
@@ -80,10 +82,10 @@ int testCursorStuff(OBX_cursor* cursor) {
     }
 
     uint64_t count = 0;
-    if (obx_cursor_count(cursor, &count)) { return printError(); }
+    if (obx_cursor_count(cursor, &count)) return printError();
     printf("Count: %ld\n", (long) count);
-    if (obx_cursor_remove(cursor, id)) { return printError(); }
-    if (obx_cursor_count(cursor, &count)) { return printError(); }
+    if (obx_cursor_remove(cursor, id)) return printError();
+    if (obx_cursor_count(cursor, &count)) return printError();
     printf("Count after remove: %ld\n", (long) count);
 
     rc = obx_cursor_remove(cursor, id);
@@ -122,18 +124,18 @@ int testCursorMultiple(OBX_cursor* cursor) {
     uint64_t id1 = obx_cursor_id_for_put(cursor, 0);
     uint64_t id2 = obx_cursor_id_for_put(cursor, 0);
     uint64_t id3 = obx_cursor_id_for_put(cursor, 0);
-    if (obx_cursor_put(cursor, id1, data1, strlen(data1) + 1, 0)) { return printError(); }
-    if (obx_cursor_put(cursor, id2, data2, strlen(data2) + 1, 0)) { return printError(); }
-    if (obx_cursor_put(cursor, id3, data3, strlen(data3) + 1, 0)) { return printError(); }
+    if (obx_cursor_put(cursor, id1, data1, strlen(data1) + 1, 0)) return printError();
+    if (obx_cursor_put(cursor, id2, data2, strlen(data2) + 1, 0)) return printError();
+    if (obx_cursor_put(cursor, id3, data3, strlen(data3) + 1, 0)) return printError();
     printf("Put at ID %ld, %ld, and %ld\n", id1, id2, id3);
 
     void* dataRead;
     size_t sizeRead;
-    if (obx_cursor_first(cursor, &dataRead, &sizeRead)) { return printError(); }
+    if (obx_cursor_first(cursor, &dataRead, &sizeRead)) return printError();
     printf("Data1 read: %s\n", (char*) dataRead);
-    if (obx_cursor_next(cursor, &dataRead, &sizeRead)) { return printError(); }
+    if (obx_cursor_next(cursor, &dataRead, &sizeRead)) return printError();
     printf("Data2 read: %s\n", (char*) dataRead);
-    if (obx_cursor_next(cursor, &dataRead, &sizeRead)) { return printError(); }
+    if (obx_cursor_next(cursor, &dataRead, &sizeRead)) return printError();
     printf("Data3 read: %s\n", (char*) dataRead);
 
     int rc = obx_cursor_next(cursor, &dataRead, &sizeRead);
@@ -142,9 +144,9 @@ int testCursorMultiple(OBX_cursor* cursor) {
         return 1;
     }
 
-    if (obx_cursor_remove_all(cursor)) { return printError(); }
+    if (obx_cursor_remove_all(cursor)) return printError();
     uint64_t count = 0;
-    if (obx_cursor_count(cursor, &count)) { return printError(); }
+    if (obx_cursor_count(cursor, &count)) return printError();
     printf("Count after remove all: %ld\n", (long) count);
     if (count) return (int) count;
 
@@ -153,11 +155,11 @@ int testCursorMultiple(OBX_cursor* cursor) {
 
 int testBoxStuff(OBX_box* box) {
     uint64_t id = obx_box_id_for_put(box, 0);
-    if (!id) { return printError(); }
+    if (!id) return printError();
     const char* hello = "Hello asnyc box!\0\0\0\0"; // Trailing zeros as padding (put rounds up to next %4 length)
     printf("Putting data at ID %ld\n", (long) id);
     size_t size = strlen(hello) + 1;
-    if (obx_box_put_async(box, id, hello, size, 0)) { return printError(); }
+    if (obx_box_put_async(box, id, hello, size, 0)) return printError();
 
     return OBX_SUCCESS;
 }
@@ -260,42 +262,39 @@ int main(int argc, char* args[]) {
     if (rc) return rc;
 
     OBX_model* model = createModel();
-    if (!model) { return printError(); }
+    if (!model) return printError();
     OBX_store* store = obx_store_open(model, NULL);
-    if (!store) { return printError(); }
+    if (!store) return printError();
     OBX_txn* txn = obx_txn_begin(store);
-    if (!txn) { return printError(); }
+    if (!txn) return printError();
     OBX_cursor* cursor = obx_cursor_create(txn, 1);
-    if (!cursor) { return printError(); }
+    if (!cursor) return printError();
 
     // Clear any existing data
-    if (obx_cursor_remove_all(cursor)) { return printError(); }
+    if (obx_cursor_remove_all(cursor)) return printError();
 
-    rc = testQueryNoData(cursor);
-    if (rc) return rc;
-
-    rc = testCursorStuff(cursor);
-    if (rc) return rc;
-    rc = testCursorMultiple(cursor);
-    if (rc) return rc;
+    if ((rc = testQueryNoData(cursor))) return rc;
+    if ((rc = testCursorStuff(cursor))) return rc;
+    if ((rc = testCursorMultiple(cursor))) return rc;
 
     if ((rc = testFlatccRoundtrip())) return rc;
     if ((rc = testPutAndGetFlatObjects(cursor))) return rc;
     if ((rc = testQueryFlatObjects(cursor))) return rc;
 
-    if (obx_cursor_destroy(cursor)) { return printError(); };
-    if (obx_txn_commit(txn)) { return printError(); }
-    if (obx_txn_destroy(txn)) { return printError(); }
+    if ((rc = testQueries(store, cursor))) return rc;
+
+    if (obx_cursor_destroy(cursor)) return printError();
+    if (obx_txn_commit(txn)) return printError();
+    if (obx_txn_destroy(txn)) return printError();
 
     OBX_box* box = obx_box_create(store, 1);
-    if (!box) { return printError(); }
-    if (obx_store_debug_flags(store, DebugFlags_LOG_ASYNC_QUEUE)) { return printError(); }
-    rc = testBoxStuff(box);
-    if (rc) return rc;
-    if (obx_box_destroy(box)) { return printError(); }
-    if (obx_store_await_async_completion(store)) { return printError(); }
+    if (!box) return printError();
+    if (obx_store_debug_flags(store, DebugFlags_LOG_ASYNC_QUEUE)) return printError();
+    if ((rc = testBoxStuff(box))) return rc;
+    if (obx_box_destroy(box)) return printError();
+    if (obx_store_await_async_completion(store)) return printError();
 
-    if (obx_store_close(store)) { return printError(); }
+    if (obx_store_close(store)) return printError();
 
     return 0;
 }

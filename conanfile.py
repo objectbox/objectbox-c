@@ -6,15 +6,14 @@ import os.path
 
 class ObjectboxC(ConanFile):
     name = "objectbox-c"
-    version = "0.1"
+    version = "0.2"
     settings = "os", "arch"
     description = "C Library for ObjectBox - a super fast embedded database for objects"
     url = "https://github.com/objectbox/objectbox-c"
     license = "Apache-2"
 
-    # Defaults for Linux, Mac, etc.
+    # Defaults for Linux, Mac, etc.; relative from objectbox-c/
     obxBuildDir = "../cbuild/Release/objectbox-c"
-    obxTestExe = obxBuildDir + "/objectbox-c-test"
 
     def package(self):
         if self.settings.os == "Windows":
@@ -43,7 +42,23 @@ class ObjectboxC(ConanFile):
 
     def test(self):
         if self.settings.os != "Windows":
-            self.run("pwd")  # directory is build/_hash_, thus go up 2 additional levels
-            exe = "../../" + self.obxTestExe
-            self.run("ls -l " + exe)
-            self.run(exe)
+            print("********* Test dirs **********")
+            self.run("echo \"PWD: $(pwd)\"")  # directory is build/_hash_, thus go up 2 additional levels
+            build_dir = os.path.abspath("../../" + self.obxBuildDir)
+            print("Build dir: " + build_dir)
+
+            print("********* C tests **********")
+            c_test_temp_dir = mkdtemp(dir=build_dir)
+            print("C test dir: " + c_test_temp_dir)
+            c_test_exe = build_dir + "/src-test/objectbox-c-test"
+            self.run("ls -l " + c_test_exe)
+            self.run(c_test_exe, cwd=c_test_temp_dir)
+            rmtree(c_test_temp_dir)
+
+            print("********* C/CPP tests **********")
+            c_cpp_test_temp_dir = mkdtemp(dir=build_dir)
+            print("C CPP test dir: " + c_cpp_test_temp_dir)
+            c_cpp_test_exe = build_dir + "/test/objectbox-c-cpp-test"
+            self.run("ls -l " + c_cpp_test_exe)
+            self.run(c_cpp_test_exe, cwd=c_cpp_test_temp_dir)
+            rmtree(c_cpp_test_temp_dir)

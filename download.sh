@@ -15,7 +15,7 @@ os=$(uname)
 echo "Detected ${os} running on ${arch}"
 
 downloadDir=download
-version=0.1
+version=0.2
 
 while getopts v:d: opt
 do
@@ -25,7 +25,7 @@ do
    esac
 done
 
-key=${os}::${arch}::${version}
+key=${os}::${arch}
 hash=$(grep "${key}" $0 | awk '{print $NF}')
 if [ -z "$hash" ]; then
     echo "Error: the configuration ${key} is unsupported (no Conan hash registered)."
@@ -96,5 +96,5 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
 fi
 
 # Known Conan hashes; this script will grep for those
-# Linux::x86_64::0.1 4db1be536558d833e52e862fd84d64d75c2b3656
-# MINGW64_NT-10.0::x86_64::0.1 ca33edce272a279b24f87dc0d4cf5bbdcffbc187
+# Linux::x86_64 4db1be536558d833e52e862fd84d64d75c2b3656
+# MINGW64_NT-10.0::x86_64 ca33edce272a279b24f87dc0d4cf5bbdcffbc187

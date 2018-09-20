@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-version="0.1"
+version="0.2"
 ref=objectbox-c/${version}@objectbox/testing
 existingID=$(conan search ${ref} | grep "Package_ID:" | awk '{print $NF}')
 if [ -z "$existingID" ]; then
@@ -26,7 +26,7 @@ hashEntry=$(grep "$newID" ${hashesFile}) || true
 if [ -z "$hashEntry" ]; then
     arch=$(uname -m)
     os=$(uname)
-    hashEntry="# ${os}::${arch}::${version} ${newID}"
+    hashEntry="# ${os}::${arch} ${newID}"
     printf "\n$hashEntry" >> ${hashesFile}
     echo "Added hash entry ($hashEntry) to ${hashesFile}"
 else

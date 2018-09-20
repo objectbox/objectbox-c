@@ -12,10 +12,9 @@ int testQueryBuilderError(OBX_store* store, OBX_cursor* cursor, uint32_t entity_
     assert(entity_prop_id);
 
     // comparing id (long) with a string
-    int rc1 = obx_qb_string_equal(builder, entity_prop_id, "aaa", true);
-    assert(rc1);
-    assert(rc1 == obx_qb_error_code(builder));
-    assert(rc1 == OBX_ERROR_PROPERTY_TYPE_MISMATCH);
+    obx_qb_cond cond = obx_qb_string_equal(builder, entity_prop_id, "aaa", true);
+    assert(0 == cond);
+    assert(OBX_ERROR_PROPERTY_TYPE_MISMATCH == obx_qb_error_code(builder));
 
     // check that the message is same
     const char * msg1 = obx_last_error_message();
@@ -27,12 +26,6 @@ int testQueryBuilderError(OBX_store* store, OBX_cursor* cursor, uint32_t entity_
     // this should not create a query
     OBX_query* query = obx_query_create(builder);
     assert(query == NULL);
-
-    // TODO try another type of error
-//    int rc2 = obx_qb_long_equal(builder, FOO_prop_text, 1);
-//    assert(rc1 != rc2);
-//    // the code should stay the same as before (first error is stored)
-//    assert(rc1 == obx_qb_error_code(builder));
 
     obx_qb_close(builder);
     obx_query_close(query);
@@ -119,7 +112,7 @@ int testQueryBuilderEqual(OBX_store* store, OBX_cursor* cursor, uint32_t entity_
         OBX_query_builder* builder = obx_qb_create(store, entity_id);
         assert(builder);
 
-        obx_qb_long_equal(builder, FOO_prop_id, id3);
+        obx_qb_int_equal(builder, FOO_prop_id, id3);
 
         OBX_query* query = obx_query_create(builder);
         assert(query);
@@ -138,7 +131,7 @@ int testQueryBuilderEqual(OBX_store* store, OBX_cursor* cursor, uint32_t entity_
         OBX_query_builder* builder = obx_qb_create(store, entity_id);
         assert(builder);
 
-        obx_qb_long_equal(builder, FOO_prop_id, -1);
+        obx_qb_int_equal(builder, FOO_prop_id, -1);
 
         OBX_query* query = obx_query_create(builder);
         assert(query);
@@ -173,7 +166,7 @@ int testQueryBuilderBetween(OBX_store* store, OBX_cursor* cursor, uint32_t entit
         OBX_query_builder* builder = obx_qb_create(store, entity_id);
         assert(builder);
 
-        obx_qb_long_between(builder, FOO_prop_id, id2, id3);
+        obx_qb_int_between(builder, FOO_prop_id, id2, id3);
 
         OBX_query* query = obx_query_create(builder);
         assert(query);
@@ -193,7 +186,7 @@ int testQueryBuilderBetween(OBX_store* store, OBX_cursor* cursor, uint32_t entit
         OBX_query_builder* builder = obx_qb_create(store, entity_id);
         assert(builder);
 
-        obx_qb_long_between(builder, FOO_prop_id, id2, id2);
+        obx_qb_int_between(builder, FOO_prop_id, id2, id2);
 
         OBX_query* query = obx_query_create(builder);
         assert(query);
@@ -212,7 +205,7 @@ int testQueryBuilderBetween(OBX_store* store, OBX_cursor* cursor, uint32_t entit
         OBX_query_builder* builder = obx_qb_create(store, entity_id);
         assert(builder);
 
-        obx_qb_long_between(builder, FOO_prop_id, id3, id2);
+        obx_qb_int_between(builder, FOO_prop_id, id3, id2);
 
         OBX_query* query = obx_query_create(builder);
         assert(query);
@@ -235,6 +228,88 @@ int testQueryBuilderBetween(OBX_store* store, OBX_cursor* cursor, uint32_t entit
     return rc;
 }
 
+int testQueryBasics(OBX_store* store, OBX_cursor* cursor, uint32_t entity_id) {
+    int rc;
+
+    if ((rc = obx_cursor_remove_all(cursor))) goto err;
+
+    uint64_t id1 = 0, id2 = 0, id3 = 0, id4 = 0;
+    if ((rc = put_foo(cursor, &id1, "aaa"))) goto err;
+    if ((rc = put_foo(cursor, &id2, "AAA"))) goto err;
+    if ((rc = put_foo(cursor, &id3, "bbb"))) goto err;
+    if ((rc = put_foo(cursor, &id4, "aaa"))) goto err;
+
+    {   // count
+        OBX_query_builder* builder = obx_qb_create(store, entity_id);
+        assert(builder);
+
+        OBX_query* query = obx_query_create(builder);
+        assert(query);
+
+        uint64_t count = 0;
+        if ((rc = obx_query_count(query, cursor, &count))) goto err;
+        assert(count == 4);
+
+        obx_qb_close(builder);
+        obx_query_close(query);
+    }
+
+    {   // find
+        OBX_query_builder* builder = obx_qb_create(store, entity_id);
+        assert(builder);
+
+        OBX_query* query = obx_query_create(builder);
+        assert(query);
+
+        OBX_bytes_array* items = obx_query_find(query, cursor);
+        assert(items);
+        assert(items->size == 4);
+
+        obx_bytes_array_destroy(items);
+        obx_qb_close(builder);
+        obx_query_close(query);
+    }
+
+    {   // remove
+        OBX_query_builder* builder = obx_qb_create(store, entity_id);
+        assert(builder);
+
+        obx_qb_string_equal(builder, FOO_prop_text, "aaa", true);
+
+        OBX_query* query = obx_query_create(builder);
+        assert(query);
+
+        uint64_t count = 0;
+        if ((rc = obx_query_remove(query, cursor, &count))) goto err;
+        assert(count == 2);
+
+        obx_qb_close(builder);
+        obx_query_close(query);
+    }
+
+    {   // find_keys
+        OBX_query_builder* builder = obx_qb_create(store, entity_id);
+        assert(builder);
+
+        OBX_query* query = obx_query_create(builder);
+        assert(query);
+
+        OBX_id_array* keys = obx_query_find_ids(query, cursor);
+        assert(keys);
+        assert(keys->size == 2);
+
+        obx_id_array_destroy(keys);
+        obx_qb_close(builder);
+        obx_query_close(query);
+    }
+
+    return 0;
+
+    err:
+    printf("%s error: %d", __FUNCTION__, rc);
+    return rc;
+}
+
 int testQueries(OBX_store* store, OBX_cursor* cursor) {
     int rc = 0;
 
@@ -244,5 +319,6 @@ int testQueries(OBX_store* store, OBX_cursor* cursor) {
     if ((rc = testQueryBuilderError(store, cursor, entity_id))) return rc;
     if ((rc = testQueryBuilderEqual(store, cursor, entity_id))) return rc;
     if ((rc = testQueryBuilderBetween(store, cursor, entity_id))) return rc;
+    if ((rc = testQueryBasics(store, cursor, entity_id))) return rc;
     return rc;
 }

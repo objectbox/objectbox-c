@@ -48,11 +48,20 @@ To get started, please have a look at the [tasks example](examples/tasks).
 
 Current state
 -------------
+**Beta notice:** the C API is quite new and not stable yet.
+You can still use it, but prepare for e.g. functions to be renamed.
+We at ObjectBox already use the C API for other products, so we do this, too.  
+The C API is a wrapper around the stable DB core, which is version 2.x and already used on million of devices.
+
 The C API is not as convenient as the [Java/Kotlin APIs](https://docs.objectbox.io/),
 which deeply integrate into the language using e.g. [@Entity annotations](https://docs.objectbox.io/entity-annotations).
 Instead, the C API is leaves more tasks to the developer.
 For example, you have to [create a FlatBuffers schema](https://google.github.io/flatbuffers/flatbuffers_guide_writing_schema.html) and build a corresponding ObjectBox model separately.
 While we might combine the two and provide more convenience in the future, the current version requires some boiler plate code.
+
+Changelog
+---------
+[CHANGELOG.md](CHANGELOG.md)
 
 License
 -------

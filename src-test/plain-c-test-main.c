@@ -19,20 +19,43 @@ OBX_model* createModel() {
     }
     uint64_t uid = 1000;
     uint64_t fooUid = uid++;
-    uint64_t idUid = uid++;
-    uint64_t textUid = uid++;
+    uint64_t fooIdUid = uid++;
+    uint64_t fooTextUid = uid++;
 
-    if (obx_model_entity(model, "Foo", 1, fooUid)
-        || obx_model_property(model, "id", PropertyType_Long, FOO_prop_id, idUid)
-        || obx_model_property_flags(model, PropertyFlags_ID)
-        || obx_model_property(model, "text", PropertyType_String, FOO_prop_text, textUid)
-        || obx_model_entity_last_property_id(model, FOO_prop_text, textUid)) {
+    if (obx_model_entity(model, "Foo", FOO_entity, fooUid)
+        || obx_model_property(model, "id", PropertyType_Long, FOO_prop_id, fooIdUid)
+            || obx_model_property_flags(model, PropertyFlags_ID)
+        || obx_model_property(model, "text", PropertyType_String, FOO_prop_text, fooTextUid)
+        || obx_model_entity_last_property_id(model, FOO_prop_text, fooTextUid)) {
 
         obx_model_destroy(model);
         return NULL;
     }
 
-    obx_model_last_entity_id(model, 1, fooUid);
+    uint64_t barUid = uid++;
+    uint64_t barIdUid = uid++;
+    uint64_t barTextUid = uid++;
+    uint64_t barFooIdUid = uid++;
+    uint64_t relUid = uid++;
+    uint64_t relIndex = 1;
+    uint64_t relIndexUid = uid++;
+
+
+    if (obx_model_entity(model, "Bar", BAR_entity, barUid)
+        || obx_model_property(model, "id", PropertyType_Long, BAR_prop_id, barIdUid)
+            || obx_model_property_flags(model, PropertyFlags_ID)
+        || obx_model_property(model, "text", PropertyType_String, BAR_prop_text, barTextUid)
+        || obx_model_property(model, "fooId", PropertyType_Relation, BAR_prop_id_foo, barFooIdUid)
+           || obx_model_property_relation(model, "Foo", relIndex, relIndexUid)
+        || obx_model_entity_last_property_id(model, BAR_prop_id_foo, barFooIdUid)) {
+
+        obx_model_destroy(model);
+        return NULL;
+    }
+
+    obx_model_last_relation_id(model, BAR_rel_foo, relUid);
+    obx_model_last_index_id(model, relIndex, relIndexUid);
+    obx_model_last_entity_id(model, BAR_entity, barUid);
     return model;
 }
 
@@ -252,6 +275,68 @@ int testQueryFlatObjects(OBX_cursor* cursor) {
     return rc;
 }
 
+int testBacklink(OBX_cursor* cursor_foo, OBX_cursor* cursor_bar) {
+    int rc;
+    uint64_t fid1 = 0, fid2 = 0, fid3 = 0;
+    uint64_t bid1 = 0, bid2 = 0, bid3 = 0;
+
+    if ((rc = obx_cursor_remove_all(cursor_foo))) goto err;
+
+    if ((rc = put_foo(cursor_foo, &fid1, "foo1"))) goto err;
+    if ((rc = put_foo(cursor_foo, &fid2, "foo2"))) goto err;
+    if ((rc = put_foo(cursor_foo, &fid3, "foo3"))) goto err;
+
+    if ((rc = put_bar(cursor_bar, &bid1, "bar1", fid1))) goto err;
+    if ((rc = put_bar(cursor_bar, &bid2, "bar2", fid1))) goto err;
+    if ((rc = put_bar(cursor_bar, &bid3, "bar3", fid3))) goto err;
+
+    uint64_t count = 0;
+    if ((rc = obx_cursor_count(cursor_foo, &count))) goto err;
+    assert(count == 3);
+
+    if ((rc = obx_cursor_count(cursor_bar, &count))) goto err;
+    assert(count == 3);
+
+    {   //bar->foo, find in BAR cursor - trivial, not really a "backlink"
+        OBX_id_array* barIds = obx_cursor_backlink_ids(cursor_bar, BAR_entity, BAR_prop_id_foo, fid1);
+        assert(barIds);
+        assert(barIds->size == 2);
+        assert(barIds->ids[0] == bid1);
+        assert(barIds->ids[1] == bid2);
+        obx_id_array_destroy(barIds);
+    }
+
+    {   //bar->foo, find in FOO cursor - actual backlinks
+        OBX_id_array* barIds = obx_cursor_backlink_ids(cursor_foo, BAR_entity, BAR_prop_id_foo, fid1);
+        assert(barIds);
+        assert(barIds->size == 2);
+        assert(barIds->ids[0] == bid1);
+        assert(barIds->ids[1] == bid2);
+        obx_id_array_destroy(barIds);
+    }
+
+    {   //bar->foo, find in FOO cursor - actual backlinks
+        OBX_bytes_array* bars = obx_cursor_backlink_bytes(cursor_foo, BAR_entity, BAR_prop_id_foo, fid3);
+        assert(bars);
+        assert(bars->size == 1);
+        {
+            Bar_table_t bar = Bar_as_root(bars->bytes[0].data);
+            assert(Bar_id(bar) == bid3);
+            assert(Bar_fooId(bar) == fid3);
+            assert(strcmp(Bar_text(bar), "bar3") == 0);
+        }
+
+        obx_bytes_array_destroy(bars);
+    }
+
+    return 0;
+
+    err:
+    printf("testPutAndGetFlatObjects error: %d", rc);
+    return rc;
+}
+
+
 int main(int argc, char* args[]) {
     printf("Testing libobjectbox version %s, core version: %s\n", obx_version_string(), obx_version_core_string());
 
@@ -267,10 +352,13 @@ int main(int argc, char* args[]) {
     if (!store) return printError();
     OBX_txn* txn = obx_txn_begin(store);
     if (!txn) return printError();
-    OBX_cursor* cursor = obx_cursor_create(txn, 1);
+    OBX_cursor* cursor = obx_cursor_create(txn, FOO_entity);
     if (!cursor) return printError();
+    OBX_cursor* cursor_bar = obx_cursor_create(txn, BAR_entity);
+    if (!cursor_bar) return printError();
 
     // Clear any existing data
+    if (obx_cursor_remove_all(cursor_bar)) return printError();
     if (obx_cursor_remove_all(cursor)) return printError();
 
     if ((rc = testQueryNoData(cursor))) return rc;
@@ -282,10 +370,13 @@ int main(int argc, char* args[]) {
     if ((rc = testQueryFlatObjects(cursor))) return rc;
 
     if ((rc = testQueries(store, cursor))) return rc;
+    if ((rc = testBacklink(cursor, cursor_bar))) return rc;
 
     if (obx_cursor_destroy(cursor)) return printError();
+    if (obx_cursor_destroy(cursor_bar)) return printError();
     if (obx_txn_commit(txn)) return printError();
     if (obx_txn_destroy(txn)) return printError();
+
 
     OBX_box* box = obx_box_create(store, 1);
     if (!box) return printError();

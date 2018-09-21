@@ -7,13 +7,15 @@ In this embedded mode, it runs within your application process.
 Some features
 -------------
 * Object storage based on [FlatBuffers](https://google.github.io/flatbuffers/)
+* Lightweight for smart devices with less than 1 MB binary size
+  (special feature reduced versions with 1/3 - 1/2 size are available on request)
 * Zero-copy reads
 * Secondary indexes based on object properties
 * Simple get/put API
 * Asynchronous puts
 * Automatic model migration (no schema upgrade scripts etc.) 
-* (Coming soon: Powerful queries) 
-* (Coming soon: Relations to other objects) 
+* Powerful queries
+* Relations to other objects (1:N for now; M:N to follow soon)
 
 Foundation for Higher Languages
 -------------------------------

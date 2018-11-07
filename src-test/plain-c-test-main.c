@@ -1,12 +1,12 @@
+#include <inttypes.h>
 #include <string.h>
 
-#include "objectbox.h"
 #include "c_test_builder.h"
 #include "c_test_objects.h"
-
+#include "objectbox.h"
 #include "query-test.h"
 
-int printError() {
+obx_err printError() {
     printf("Unexpected error: %d, %d (%s)\n", obx_last_error_code(), obx_last_error_secondary(),
            obx_last_error_message());
     return obx_last_error_code();
@@ -17,39 +17,36 @@ OBX_model* createModel() {
     if (!model) {
         return NULL;
     }
-    uint64_t uid = 1000;
-    uint64_t fooUid = uid++;
-    uint64_t fooIdUid = uid++;
-    uint64_t fooTextUid = uid++;
+    obx_uid uid = 1000;
+    obx_uid fooUid = uid++;
+    obx_uid fooIdUid = uid++;
+    obx_uid fooTextUid = uid++;
 
-    if (obx_model_entity(model, "Foo", FOO_entity, fooUid)
-        || obx_model_property(model, "id", PropertyType_Long, FOO_prop_id, fooIdUid)
-            || obx_model_property_flags(model, PropertyFlags_ID)
-        || obx_model_property(model, "text", PropertyType_String, FOO_prop_text, fooTextUid)
-        || obx_model_entity_last_property_id(model, FOO_prop_text, fooTextUid)) {
-
-        obx_model_destroy(model);
+    if (obx_model_entity(model, "Foo", FOO_entity, fooUid) ||
+        obx_model_property(model, "id", PropertyType_Long, FOO_prop_id, fooIdUid) ||
+        obx_model_property_flags(model, PropertyFlags_ID) ||
+        obx_model_property(model, "text", PropertyType_String, FOO_prop_text, fooTextUid) ||
+        obx_model_entity_last_property_id(model, FOO_prop_text, fooTextUid)) {
+        obx_model_free(model);
         return NULL;
     }
 
-    uint64_t barUid = uid++;
-    uint64_t barIdUid = uid++;
-    uint64_t barTextUid = uid++;
-    uint64_t barFooIdUid = uid++;
-    uint64_t relUid = uid++;
-    uint64_t relIndex = 1;
-    uint64_t relIndexUid = uid++;
+    obx_uid barUid = uid++;
+    obx_uid barIdUid = uid++;
+    obx_uid barTextUid = uid++;
+    obx_uid barFooIdUid = uid++;
+    obx_uid relUid = uid++;
+    obx_uid relIndex = 1;
+    obx_uid relIndexUid = uid++;
 
-
-    if (obx_model_entity(model, "Bar", BAR_entity, barUid)
-        || obx_model_property(model, "id", PropertyType_Long, BAR_prop_id, barIdUid)
-            || obx_model_property_flags(model, PropertyFlags_ID)
-        || obx_model_property(model, "text", PropertyType_String, BAR_prop_text, barTextUid)
-        || obx_model_property(model, "fooId", PropertyType_Relation, BAR_prop_id_foo, barFooIdUid)
-           || obx_model_property_relation(model, "Foo", relIndex, relIndexUid)
-        || obx_model_entity_last_property_id(model, BAR_prop_id_foo, barFooIdUid)) {
-
-        obx_model_destroy(model);
+    if (obx_model_entity(model, "Bar", BAR_entity, barUid) ||
+        obx_model_property(model, "id", PropertyType_Long, BAR_prop_id, barIdUid) ||
+        obx_model_property_flags(model, PropertyFlags_ID) ||
+        obx_model_property(model, "text", PropertyType_String, BAR_prop_text, barTextUid) ||
+        obx_model_property(model, "fooId", PropertyType_Relation, BAR_prop_id_foo, barFooIdUid) ||
+        obx_model_property_relation(model, "Foo", relIndex, relIndexUid) ||
+        obx_model_entity_last_property_id(model, BAR_prop_id_foo, barFooIdUid)) {
+        obx_model_free(model);
         return NULL;
     }
 
@@ -59,7 +56,7 @@ OBX_model* createModel() {
     return model;
 }
 
-int testVersion() {
+obx_err testVersion() {
     if (obx_version_is_at_least(999, 0, 0)) return 999;
     if (obx_version_is_at_least(OBX_VERSION_MAJOR, OBX_VERSION_MINOR, OBX_VERSION_PATCH + 1)) return 1;
     if (!obx_version_is_at_least(OBX_VERSION_MAJOR, OBX_VERSION_MINOR, OBX_VERSION_PATCH)) return 2;
@@ -71,7 +68,7 @@ int testVersion() {
     return 0;
 }
 
-int testOpenWithNullBytesError() {
+obx_err testOpenWithNullBytesError() {
     OBX_store* store = obx_store_open_bytes(NULL, 0, NULL);
     if (store) {
         obx_store_close(store);
@@ -85,10 +82,10 @@ int testOpenWithNullBytesError() {
     return OBX_SUCCESS;
 }
 
-int testCursorStuff(OBX_cursor* cursor) {
-    uint64_t id = obx_cursor_id_for_put(cursor, 0);
+obx_err testCursorStuff(OBX_cursor* cursor) {
+    obx_id id = obx_cursor_id_for_put(cursor, 0);
     if (!id) return printError();
-    const char* hello = "Hello C!\0\0\0\0"; // Trailing zeros as padding (put rounds up to next %4 length)
+    const char* hello = "Hello C!\0\0\0\0";  // Trailing zeros as padding (put rounds up to next %4 length)
     printf("Putting data at ID %ld\n", (long) id);
     size_t size = strlen(hello) + 1;
     if (obx_cursor_put(cursor, id, hello, size, 0)) return printError();
@@ -98,11 +95,18 @@ int testCursorStuff(OBX_cursor* cursor) {
     if (obx_cursor_get(cursor, id, &dataRead, &sizeRead)) return printError();
     printf("Data read from ID %ld: %s\n", (long) id, (char*) dataRead);
 
-    int rc = obx_cursor_get(cursor, id + 1, &dataRead, &sizeRead);
+    obx_err rc = obx_cursor_get(cursor, id + 1, &dataRead, &sizeRead);
     if (rc != OBX_NOT_FOUND) {
         printf("Get expected OBX_NOT_FOUND, but got %d\n", rc);
         return 1;
     }
+
+    OBX_bytes_array* bytesArray = obx_cursor_get_all(cursor);
+    if (bytesArray == NULL || bytesArray->count != 1) {
+        printf("obx_cursor_get_all did not return one result: %d\n", rc);
+        return 1;
+    }
+    obx_bytes_array_free(bytesArray);
 
     uint64_t count = 0;
     if (obx_cursor_count(cursor, &count)) return printError();
@@ -120,8 +124,14 @@ int testCursorStuff(OBX_cursor* cursor) {
     return OBX_SUCCESS;
 }
 
-int testQueryNoData(OBX_cursor* cursor) {
-    OBX_bytes_array* bytesArray = obx_query_by_string(cursor, 2, "dummy");
+obx_err testQueryNoData(OBX_cursor* cursor, OBX_store* store) {
+    OBX_query_builder* builder = obx_qb_create(store, 1);
+    assert(builder);
+
+    OBX_query* query = obx_query_create(builder);
+    assert(query);
+
+    OBX_bytes_array* bytesArray = obx_query_find(query, cursor);
     if (!bytesArray) {
         printf("Query failed\n");
         return -99;
@@ -130,27 +140,29 @@ int testQueryNoData(OBX_cursor* cursor) {
         printf("Query tables value\n");
         return -98;
     }
-    if (bytesArray->size) {
+    if (bytesArray->count) {
         printf("Query table size value\n");
         return -98;
     }
-    obx_bytes_array_destroy(bytesArray);
+    obx_bytes_array_free(bytesArray);
+    obx_query_close(query);
+    obx_qb_close(builder);
     return OBX_SUCCESS;
 }
 
-int testCursorMultiple(OBX_cursor* cursor) {
+obx_err testCursorMultiple(OBX_cursor* cursor) {
     // Trailing zeros as padding (put rounds up to next %4 length)
     const char* data1 = "Apple\0\0\0\0";
     const char* data2 = "Banana\0\0\0\0";
     const char* data3 = "Mango\0\0\0\0";
 
-    uint64_t id1 = obx_cursor_id_for_put(cursor, 0);
-    uint64_t id2 = obx_cursor_id_for_put(cursor, 0);
-    uint64_t id3 = obx_cursor_id_for_put(cursor, 0);
+    obx_id id1 = obx_cursor_id_for_put(cursor, 0);
+    obx_id id2 = obx_cursor_id_for_put(cursor, 0);
+    obx_id id3 = obx_cursor_id_for_put(cursor, 0);
     if (obx_cursor_put(cursor, id1, data1, strlen(data1) + 1, 0)) return printError();
     if (obx_cursor_put(cursor, id2, data2, strlen(data2) + 1, 0)) return printError();
     if (obx_cursor_put(cursor, id3, data3, strlen(data3) + 1, 0)) return printError();
-    printf("Put at ID %ld, %ld, and %ld\n", id1, id2, id3);
+    printf("Put at ID %" PRIu64 ", %" PRIu64 ", and %" PRIu64 "\n", id1, id2, id3);
 
     void* dataRead;
     size_t sizeRead;
@@ -161,7 +173,7 @@ int testCursorMultiple(OBX_cursor* cursor) {
     if (obx_cursor_next(cursor, &dataRead, &sizeRead)) return printError();
     printf("Data3 read: %s\n", (char*) dataRead);
 
-    int rc = obx_cursor_next(cursor, &dataRead, &sizeRead);
+    obx_err rc = obx_cursor_next(cursor, &dataRead, &sizeRead);
     if (rc != OBX_NOT_FOUND) {
         printf("Next expected OBX_NOT_FOUND, but got %d\n", rc);
         return 1;
@@ -176,10 +188,10 @@ int testCursorMultiple(OBX_cursor* cursor) {
     return OBX_SUCCESS;
 }
 
-int testBoxStuff(OBX_box* box) {
-    uint64_t id = obx_box_id_for_put(box, 0);
+obx_err testBoxStuff(OBX_box* box) {
+    obx_id id = obx_box_id_for_put(box, 0);
     if (!id) return printError();
-    const char* hello = "Hello asnyc box!\0\0\0\0"; // Trailing zeros as padding (put rounds up to next %4 length)
+    const char* hello = "Hello asnyc box!\0\0\0\0";  // Trailing zeros as padding (put rounds up to next %4 length)
     printf("Putting data at ID %ld\n", (long) id);
     size_t size = strlen(hello) + 1;
     if (obx_box_put_async(box, id, hello, size, 0)) return printError();
@@ -187,9 +199,9 @@ int testBoxStuff(OBX_box* box) {
     return OBX_SUCCESS;
 }
 
-int testFlatccRoundtrip() {
+obx_err testFlatccRoundtrip() {
     flatcc_builder_t builder;
-    int rc;
+    obx_err rc;
     if ((rc = create_foo(&builder, 42, "bar"))) goto err;
 
     size_t size;
@@ -206,14 +218,14 @@ int testFlatccRoundtrip() {
     flatcc_builder_clear(&builder);
     return 0;
 
-    err:
-    printf("testFlatccRoundtrip error: %d", rc);
+err:
+    printf("%s error: %d\n", __func__, rc);
     return rc;
 }
 
-int testPutAndGetFlatObjects(OBX_cursor* cursor) {
-    int rc;
-    uint64_t id = 0;
+obx_err testPutAndGetFlatObjects(OBX_cursor* cursor) {
+    obx_err rc;
+    obx_id id = 0;
 
     if ((rc = put_foo(cursor, &id, "bar"))) goto err;
     Foo_table_t table = get_foo(cursor, id);
@@ -225,62 +237,18 @@ int testPutAndGetFlatObjects(OBX_cursor* cursor) {
     assert(strcmp(Foo_text(table), "bar") == 0);
     return 0;
 
-    err:
-    printf("testPutAndGetFlatObjects error: %d", rc);
+err:
+    printf("%s error: %d\n", __func__, rc);
     return rc;
 }
 
-int testQueryFlatObjects(OBX_cursor* cursor) {
-    int rc;
-    uint64_t id1 = 0, id2 = 0, id3 = 0;
-
-    if ((rc = obx_cursor_remove_all(cursor))) goto err;
-
-    if ((rc = put_foo(cursor, &id1, "foo"))) goto err;
-    if ((rc = put_foo(cursor, &id2, "bar"))) goto err;
-    if ((rc = put_foo(cursor, &id3, "foo"))) goto err;
-
-    uint64_t count = 0;
-    if ((rc = obx_cursor_count(cursor, &count))) goto err;
-    assert(count == 3);
-
-    OBX_bytes_array* resultNone = obx_query_by_string(cursor, 2, "nothing here");
-    assert(resultNone);
-    assert(resultNone->size == 0);
-    obx_bytes_array_destroy(resultNone);
-
-    OBX_bytes_array* resultFoo = obx_query_by_string(cursor, 2, "foo");
-    assert(resultFoo);
-    assert(resultFoo->size == 2);
-    Foo_table_t foo1 = Foo_as_root(resultFoo->bytes[0].data);
-    assert(Foo_id(foo1) == id1);
-    assert(strcmp(Foo_text(foo1), "foo") == 0);
-    Foo_table_t foo2 = Foo_as_root(resultFoo->bytes[1].data);
-    assert(Foo_id(foo2) == id3);
-    assert(strcmp(Foo_text(foo2), "foo") == 0);
-    obx_bytes_array_destroy(resultFoo);
-
-    OBX_bytes_array* resultBar = obx_query_by_string(cursor, 2, "bar");
-    assert(resultBar);
-    assert(resultBar->size == 1);
-    Foo_table_t bar = Foo_as_root(resultBar->bytes[0].data);
-    assert(Foo_id(bar) == id2);
-    assert(strcmp(Foo_text(bar), "bar") == 0);
-    obx_bytes_array_destroy(resultBar);
-
-    return 0;
-
-    err:
-    printf("testPutAndGetFlatObjects error: %d", rc);
-    return rc;
-}
-
-int testBacklink(OBX_cursor* cursor_foo, OBX_cursor* cursor_bar) {
-    int rc;
-    uint64_t fid1 = 0, fid2 = 0, fid3 = 0;
-    uint64_t bid1 = 0, bid2 = 0, bid3 = 0;
+obx_err testBacklink(OBX_cursor* cursor_foo, OBX_cursor* cursor_bar) {
+    obx_err rc;
+    obx_id fid1 = 0, fid2 = 0, fid3 = 0;
+    obx_id bid1 = 0, bid2 = 0, bid3 = 0;
 
     if ((rc = obx_cursor_remove_all(cursor_foo))) goto err;
+    if ((rc = obx_cursor_remove_all(cursor_bar))) goto err;
 
     if ((rc = put_foo(cursor_foo, &fid1, "foo1"))) goto err;
     if ((rc = put_foo(cursor_foo, &fid2, "foo2"))) goto err;
@@ -297,28 +265,28 @@ int testBacklink(OBX_cursor* cursor_foo, OBX_cursor* cursor_bar) {
     if ((rc = obx_cursor_count(cursor_bar, &count))) goto err;
     assert(count == 3);
 
-    {   //bar->foo, find in BAR cursor - trivial, not really a "backlink"
+    {  // bar->foo, find in BAR cursor - trivial, not really a "backlink"
         OBX_id_array* barIds = obx_cursor_backlink_ids(cursor_bar, BAR_entity, BAR_prop_id_foo, fid1);
         assert(barIds);
-        assert(barIds->size == 2);
+        assert(barIds->count == 2);
         assert(barIds->ids[0] == bid1);
         assert(barIds->ids[1] == bid2);
-        obx_id_array_destroy(barIds);
+        obx_id_array_free(barIds);
     }
 
-    {   //bar->foo, find in FOO cursor - actual backlinks
+    {  // bar->foo, find in FOO cursor - actual backlinks
         OBX_id_array* barIds = obx_cursor_backlink_ids(cursor_foo, BAR_entity, BAR_prop_id_foo, fid1);
         assert(barIds);
-        assert(barIds->size == 2);
+        assert(barIds->count == 2);
         assert(barIds->ids[0] == bid1);
         assert(barIds->ids[1] == bid2);
-        obx_id_array_destroy(barIds);
+        obx_id_array_free(barIds);
     }
 
-    {   //bar->foo, find in FOO cursor - actual backlinks
+    {  // bar->foo, find in FOO cursor - actual backlinks
         OBX_bytes_array* bars = obx_cursor_backlink_bytes(cursor_foo, BAR_entity, BAR_prop_id_foo, fid3);
         assert(bars);
-        assert(bars->size == 1);
+        assert(bars->count == 1);
         {
             Bar_table_t bar = Bar_as_root(bars->bytes[0].data);
             assert(Bar_id(bar) == bid3);
@@ -326,66 +294,99 @@ int testBacklink(OBX_cursor* cursor_foo, OBX_cursor* cursor_bar) {
             assert(strcmp(Bar_text(bar), "bar3") == 0);
         }
 
-        obx_bytes_array_destroy(bars);
+        obx_bytes_array_free(bars);
     }
 
     return 0;
 
-    err:
-    printf("testPutAndGetFlatObjects error: %d", rc);
+err:
+    printf("%s error: %d\n", __func__, rc);
     return rc;
 }
-
 
 int main(int argc, char* args[]) {
     printf("Testing libobjectbox version %s, core version: %s\n", obx_version_string(), obx_version_core_string());
 
-    int rc = testVersion();
+    OBX_store* store = NULL;
+    OBX_txn* txn = NULL;
+    OBX_cursor* cursor = NULL;
+    OBX_cursor* cursor_bar = NULL;
+    OBX_box* box = NULL;
+
+    obx_err rc = testVersion();
     if (rc) return rc;
 
     rc = testOpenWithNullBytesError();
     if (rc) return rc;
 
-    OBX_model* model = createModel();
-    if (!model) return printError();
-    OBX_store* store = obx_store_open(model, NULL);
-    if (!store) return printError();
-    OBX_txn* txn = obx_txn_begin(store);
-    if (!txn) return printError();
-    OBX_cursor* cursor = obx_cursor_create(txn, FOO_entity);
-    if (!cursor) return printError();
-    OBX_cursor* cursor_bar = obx_cursor_create(txn, BAR_entity);
-    if (!cursor_bar) return printError();
+    // Firstly, we need to create a model for our data and the store
+    {
+        OBX_model* model = createModel();
+        if (!model) goto handle_error;
+
+        store = obx_store_open(model, NULL);
+        if (!store) goto handle_error;
+
+        // model is freed by the obx_store_open(), we can't access it anymore
+    }
+
+    txn = obx_txn_begin(store);
+    if (!txn) goto handle_error;
+
+    cursor = obx_cursor_create(txn, FOO_entity);
+    if (!cursor) goto handle_error;
+    cursor_bar = obx_cursor_create(txn, BAR_entity);
+    if (!cursor_bar) goto handle_error;
 
     // Clear any existing data
-    if (obx_cursor_remove_all(cursor_bar)) return printError();
-    if (obx_cursor_remove_all(cursor)) return printError();
+    if (obx_cursor_remove_all(cursor_bar)) goto handle_error;
+    if (obx_cursor_remove_all(cursor)) goto handle_error;
 
-    if ((rc = testQueryNoData(cursor))) return rc;
-    if ((rc = testCursorStuff(cursor))) return rc;
-    if ((rc = testCursorMultiple(cursor))) return rc;
+    if ((rc = testQueryNoData(cursor, store))) goto handle_error;
+    if ((rc = testCursorStuff(cursor))) goto handle_error;
+    if ((rc = testCursorMultiple(cursor))) goto handle_error;
 
-    if ((rc = testFlatccRoundtrip())) return rc;
-    if ((rc = testPutAndGetFlatObjects(cursor))) return rc;
-    if ((rc = testQueryFlatObjects(cursor))) return rc;
+    if ((rc = testFlatccRoundtrip())) goto handle_error;
+    if ((rc = testPutAndGetFlatObjects(cursor))) goto handle_error;
 
-    if ((rc = testQueries(store, cursor))) return rc;
-    if ((rc = testBacklink(cursor, cursor_bar))) return rc;
+    if ((rc = testQueries(store, cursor))) goto handle_error;
+    // TODO temporarily disabled due to issue #10
+    // if ((rc = testBacklink(cursor, cursor_bar))) goto handle_error;
 
-    if (obx_cursor_destroy(cursor)) return printError();
-    if (obx_cursor_destroy(cursor_bar)) return printError();
-    if (obx_txn_commit(txn)) return printError();
-    if (obx_txn_destroy(txn)) return printError();
+    if (obx_cursor_close(cursor)) goto handle_error;
+    if (obx_cursor_close(cursor_bar)) goto handle_error;
+    if (obx_txn_commit(txn)) goto handle_error;
+    if (obx_txn_close(txn)) goto handle_error;
 
+    box = obx_box_create(store, 1);
+    if (!box) goto handle_error;
+    if (obx_store_debug_flags(store, DebugFlags_LOG_ASYNC_QUEUE)) goto handle_error;
+    if ((rc = testBoxStuff(box))) goto handle_error;
+    if (obx_box_close(box)) goto handle_error;
+    if (obx_store_await_async_completion(store)) goto handle_error;
 
-    OBX_box* box = obx_box_create(store, 1);
-    if (!box) return printError();
-    if (obx_store_debug_flags(store, DebugFlags_LOG_ASYNC_QUEUE)) return printError();
-    if ((rc = testBoxStuff(box))) return rc;
-    if (obx_box_destroy(box)) return printError();
-    if (obx_store_await_async_completion(store)) return printError();
-
-    if (obx_store_close(store)) return printError();
+    if (obx_store_close(store)) goto handle_error;
 
     return 0;
+
+// print error and cleanup on error
+handle_error:
+    if (!rc) rc = -1;
+    printError();
+
+    // cleanup anything remaining
+    if (cursor) {
+        obx_cursor_close(cursor);
+    }
+    if (txn) {
+        obx_txn_close(txn);
+    }
+    if (box) {
+        obx_box_close(box);
+    }
+    if (store) {
+        obx_store_await_async_completion(store);
+        obx_store_close(store);
+    }
+    return rc;
 }

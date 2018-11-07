@@ -3,12 +3,12 @@
 #include "c_test_objects.h"
 #include <assert.h>
 
-int testQueryBuilderError(OBX_store* store, OBX_cursor* cursor, uint32_t entity_id) {
+int testQueryBuilderError(OBX_store* store, OBX_cursor* cursor, obx_schema_id entity_id) {
     int rc = 0;
     OBX_query_builder* builder = obx_qb_create(store, entity_id);
     assert(builder);
 
-    uint32_t entity_prop_id = obx_store_entity_property_id(store, entity_id, "id");
+    obx_schema_id entity_prop_id = obx_store_entity_property_id(store, entity_id, "id");
     assert(entity_prop_id);
 
     // comparing id (long) with a string
@@ -32,18 +32,18 @@ int testQueryBuilderError(OBX_store* store, OBX_cursor* cursor, uint32_t entity_
     return rc;
 }
 
-void checkFooItem(void* data, uint64_t id, const char* text) {
+void checkFooItem(void* data, obx_id id, const char* text) {
     Foo_table_t foo1 = Foo_as_root(data);
     assert(Foo_id(foo1) == id);
     assert(strcmp(Foo_text(foo1), text) == 0);
 }
 
-int testQueryBuilderEqual(OBX_store* store, OBX_cursor* cursor, uint32_t entity_id) {
+int testQueryBuilderEqual(OBX_store* store, OBX_cursor* cursor, obx_schema_id entity_id) {
     int rc;
 
     if ((rc = obx_cursor_remove_all(cursor))) goto err;
 
-    uint64_t id1 = 0, id2 = 0, id3 = 0;
+    obx_id id1 = 0, id2 = 0, id3 = 0;
     if ((rc = put_foo(cursor, &id1, "aaa"))) goto err;
     if ((rc = put_foo(cursor, &id2, "AAA"))) goto err;
     if ((rc = put_foo(cursor, &id3, "aaa"))) goto err;
@@ -59,10 +59,10 @@ int testQueryBuilderEqual(OBX_store* store, OBX_cursor* cursor, uint32_t entity_
 
         OBX_bytes_array* items = obx_query_find(query, cursor);
         assert(items);
-        assert(items->size == 2);
+        assert(items->count == 2);
         checkFooItem(items->bytes[0].data, id1, "aaa");
         checkFooItem(items->bytes[1].data, id3, "aaa");
-        obx_bytes_array_destroy(items);
+        obx_bytes_array_free(items);
 
         obx_qb_close(builder);
         obx_query_close(query);
@@ -80,11 +80,11 @@ int testQueryBuilderEqual(OBX_store* store, OBX_cursor* cursor, uint32_t entity_
 
         OBX_bytes_array* items = obx_query_find(query, cursor);
         assert(items);
-        assert(items->size == 3);
+        assert(items->count == 3);
         checkFooItem(items->bytes[0].data, id1, "aaa");
         checkFooItem(items->bytes[1].data, id2, "AAA");
         checkFooItem(items->bytes[2].data, id3, "aaa");
-        obx_bytes_array_destroy(items);
+        obx_bytes_array_free(items);
 
         obx_qb_close(builder);
         obx_query_close(query);
@@ -101,8 +101,8 @@ int testQueryBuilderEqual(OBX_store* store, OBX_cursor* cursor, uint32_t entity_
 
         OBX_bytes_array* items = obx_query_find(query, cursor);
         assert(items);
-        assert(items->size == 0);
-        obx_bytes_array_destroy(items);
+        assert(items->count == 0);
+        obx_bytes_array_free(items);
 
         obx_qb_close(builder);
         obx_query_close(query);
@@ -119,9 +119,9 @@ int testQueryBuilderEqual(OBX_store* store, OBX_cursor* cursor, uint32_t entity_
 
         OBX_bytes_array* items = obx_query_find(query, cursor);
         assert(items);
-        assert(items->size == 1);
+        assert(items->count == 1);
         checkFooItem(items->bytes[0].data, id3, "aaa");
-        obx_bytes_array_destroy(items);
+        obx_bytes_array_free(items);
 
         obx_qb_close(builder);
         obx_query_close(query);
@@ -138,8 +138,8 @@ int testQueryBuilderEqual(OBX_store* store, OBX_cursor* cursor, uint32_t entity_
 
         OBX_bytes_array* items = obx_query_find(query, cursor);
         assert(items);
-        assert(items->size == 0);
-        obx_bytes_array_destroy(items);
+        assert(items->count == 0);
+        obx_bytes_array_free(items);
 
         obx_qb_close(builder);
         obx_query_close(query);
@@ -152,12 +152,12 @@ int testQueryBuilderEqual(OBX_store* store, OBX_cursor* cursor, uint32_t entity_
     return rc;
 }
 
-int testQueryBuilderBetween(OBX_store* store, OBX_cursor* cursor, uint32_t entity_id) {
+int testQueryBuilderBetween(OBX_store* store, OBX_cursor* cursor, obx_schema_id entity_id) {
     int rc;
 
     if ((rc = obx_cursor_remove_all(cursor))) goto err;
 
-    uint64_t id1 = 0, id2 = 0, id3 = 0;
+    obx_id id1 = 0, id2 = 0, id3 = 0;
     if ((rc = put_foo(cursor, &id1, "aaa"))) goto err;
     if ((rc = put_foo(cursor, &id2, "AAA"))) goto err;
     if ((rc = put_foo(cursor, &id3, "aaa"))) goto err;
@@ -173,10 +173,10 @@ int testQueryBuilderBetween(OBX_store* store, OBX_cursor* cursor, uint32_t entit
 
         OBX_bytes_array* items = obx_query_find(query, cursor);
         assert(items);
-        assert(items->size == 2);
+        assert(items->count == 2);
         checkFooItem(items->bytes[0].data, id2, "AAA");
         checkFooItem(items->bytes[1].data, id3, "aaa");
-        obx_bytes_array_destroy(items);
+        obx_bytes_array_free(items);
 
         obx_qb_close(builder);
         obx_query_close(query);
@@ -193,9 +193,9 @@ int testQueryBuilderBetween(OBX_store* store, OBX_cursor* cursor, uint32_t entit
 
         OBX_bytes_array* items = obx_query_find(query, cursor);
         assert(items);
-        assert(items->size == 1);
+        assert(items->count == 1);
         checkFooItem(items->bytes[0].data, id2, "AAA");
-        obx_bytes_array_destroy(items);
+        obx_bytes_array_free(items);
 
         obx_qb_close(builder);
         obx_query_close(query);
@@ -212,10 +212,10 @@ int testQueryBuilderBetween(OBX_store* store, OBX_cursor* cursor, uint32_t entit
 
         OBX_bytes_array* items = obx_query_find(query, cursor);
         assert(items);
-        assert(items->size == 2);
+        assert(items->count == 2);
         checkFooItem(items->bytes[0].data, id2, "AAA");
         checkFooItem(items->bytes[1].data, id3, "aaa");
-        obx_bytes_array_destroy(items);
+        obx_bytes_array_free(items);
 
         obx_qb_close(builder);
         obx_query_close(query);
@@ -228,12 +228,12 @@ int testQueryBuilderBetween(OBX_store* store, OBX_cursor* cursor, uint32_t entit
     return rc;
 }
 
-int testQueryBasics(OBX_store* store, OBX_cursor* cursor, uint32_t entity_id) {
+int testQueryBasics(OBX_store* store, OBX_cursor* cursor, obx_schema_id entity_id) {
     int rc;
 
     if ((rc = obx_cursor_remove_all(cursor))) goto err;
 
-    uint64_t id1 = 0, id2 = 0, id3 = 0, id4 = 0;
+    obx_id id1 = 0, id2 = 0, id3 = 0, id4 = 0;
     if ((rc = put_foo(cursor, &id1, "aaa"))) goto err;
     if ((rc = put_foo(cursor, &id2, "AAA"))) goto err;
     if ((rc = put_foo(cursor, &id3, "bbb"))) goto err;
@@ -263,9 +263,9 @@ int testQueryBasics(OBX_store* store, OBX_cursor* cursor, uint32_t entity_id) {
 
         OBX_bytes_array* items = obx_query_find(query, cursor);
         assert(items);
-        assert(items->size == 4);
+        assert(items->count == 4);
 
-        obx_bytes_array_destroy(items);
+        obx_bytes_array_free(items);
         obx_qb_close(builder);
         obx_query_close(query);
     }
@@ -296,9 +296,9 @@ int testQueryBasics(OBX_store* store, OBX_cursor* cursor, uint32_t entity_id) {
 
         OBX_id_array* keys = obx_query_find_ids(query, cursor);
         assert(keys);
-        assert(keys->size == 2);
+        assert(keys->count == 2);
 
-        obx_id_array_destroy(keys);
+        obx_id_array_free(keys);
         obx_qb_close(builder);
         obx_query_close(query);
     }
@@ -313,7 +313,7 @@ int testQueryBasics(OBX_store* store, OBX_cursor* cursor, uint32_t entity_id) {
 int testQueries(OBX_store* store, OBX_cursor* cursor) {
     int rc = 0;
 
-    uint32_t entity_id = obx_store_entity_id(store, "Foo");
+    obx_schema_id entity_id = obx_store_entity_id(store, "Foo");
     if (!entity_id) return obx_last_error_code();
 
     if ((rc = testQueryBuilderError(store, cursor, entity_id))) return rc;

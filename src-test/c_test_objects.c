@@ -5,7 +5,7 @@ int create_foo(flatcc_builder_t* B, uint64_t id, char* text) {
     if ((rc = flatcc_builder_init(B))) return rc;
     if ((rc = Foo_start_as_root(B))) return rc;
     if ((rc = Foo_id_add(B, id))) return rc;
-    rc = Foo_text_create(B, text, strlen(text));
+    rc = Foo_text_create_str(B, text);
     if (rc) return rc;
     flatbuffers_buffer_ref_t root = Foo_end_as_root(B);
     return 0;
@@ -58,8 +58,7 @@ int create_bar(flatcc_builder_t* B, uint64_t id, char* text, uint64_t fooId) {
     if ((rc = Bar_start_as_root(B))) return rc;
     if ((rc = Bar_id_add(B, id))) return rc;
     if ((rc = Bar_fooId_add(B, fooId))) return rc;
-    rc = Bar_text_create(B, text, strlen(text));
-    if (rc) return rc;
+    if ((rc = Bar_text_create_str(B, text))) return rc;
     flatbuffers_buffer_ref_t root = Bar_end_as_root(B);
     return 0;
 }
@@ -84,7 +83,7 @@ int put_bar(OBX_cursor* cursor, uint64_t* idInOut, char* text, uint64_t fooId) {
     int checkForPreviousValueFlag = id == 0 ? 0 : 1;
 
     id = obx_cursor_id_for_put(cursor, id);
-    if (!id) { return -1; }
+    if (!id) return -1;
 
     int rc = create_bar(&builder, id, text, fooId);
     if (rc) goto err;

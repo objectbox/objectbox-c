@@ -63,13 +63,13 @@ void timestamp_parse(uint64_t timestamp, const char* date_format, size_t date_bu
     }
 }
 
-int error_print() {
+obx_err error_print() {
     printf("Unexpected error: %d, %d (%s)\n", obx_last_error_code(), obx_last_error_secondary(), obx_last_error_message());
     return obx_last_error_code();
 }
 //endregion
 
-OBX_model* model_create(uint32_t task_entity_id) {
+OBX_model* model_create(obx_schema_id task_entity_id) {
     OBX_model* model = obx_model_create();
     if (!model) {
         return NULL;
@@ -88,7 +88,7 @@ OBX_model* model_create(uint32_t task_entity_id) {
         // TASK that we are using the propertyId & the uid of the most recently added property
         || obx_model_entity_last_property_id(model, 4, 100010004)) {
 
-        obx_model_destroy(model);
+        obx_model_free(model);
         return NULL;
     }
 
@@ -96,8 +96,8 @@ OBX_model* model_create(uint32_t task_entity_id) {
     return model;
 }
 
-int task_build(flatcc_builder_t* B, uint64_t id, const char* text, uint64_t date_created, uint64_t date_finished) {
-    int rc;
+obx_err task_build(flatcc_builder_t* B, obx_id id, const char* text, uint64_t date_created, uint64_t date_finished) {
+    obx_err rc;
     if ((rc = Task_start_as_root(B))) return rc;
     if ((rc = Task_id_add(B, id))) return rc;
     if ((rc = Task_text_create(B, text, strlen(text)))) return rc;
@@ -107,14 +107,14 @@ int task_build(flatcc_builder_t* B, uint64_t id, const char* text, uint64_t date
     return 0;
 }
 
-int task_put(OBX_cursor* cursor, uint64_t id, const char* text, uint64_t date_created, uint64_t date_finished) {
+obx_err task_put(OBX_cursor* cursor, obx_id id, const char* text, uint64_t date_created, uint64_t date_finished) {
     // TASK the flatbuffer builder should be reused instead of created on demand, refer to the flatbuffer documentation for more details
     flatcc_builder_t builder;
 
     // Initialize the builder object.
     flatcc_builder_init(&builder);
 
-    int rc = 0;
+    obx_err rc = 0;
     if ((rc = task_build(&builder, id, text, date_created, date_finished))) {
         printf("%s error: %d (task_build)\n", __FUNCTION__, rc);
     }
@@ -137,15 +137,15 @@ int task_put(OBX_cursor* cursor, uint64_t id, const char* text, uint64_t date_cr
     return rc;
 }
 
-int task_create(OBX_cursor* cursor, char* text) {
-    int rc = 0;
+obx_err task_create(OBX_cursor* cursor, char* text) {
+    obx_err rc = 0;
 
     uint64_t count = 0;
     if ((rc = obx_cursor_count(cursor, &count))) goto finalize;
 
     // put a new task to the box
     {
-        uint64_t id = obx_cursor_id_for_put(cursor, 0);
+        obx_id id = obx_cursor_id_for_put(cursor, 0);
         if (!id) {
             rc = (rc = obx_last_error_code()) ? rc : -1;
             goto finalize;
@@ -169,8 +169,8 @@ int task_create(OBX_cursor* cursor, char* text) {
         return rc;
 }
 
-int task_done(OBX_cursor* cursor, uint64_t id) {
-    int rc = 0;
+obx_err task_done(OBX_cursor* cursor, obx_id id) {
+    obx_err rc = 0;
 
     void* data;
     size_t size;
@@ -196,8 +196,8 @@ int task_done(OBX_cursor* cursor, uint64_t id) {
     return rc;
 }
 
-int task_list(OBX_cursor* cursor, bool list_done) {
-    int rc = 0;
+obx_err task_list(OBX_cursor* cursor, bool list_done) {
+    obx_err rc = 0;
 
     void* data;
     size_t size;
@@ -246,7 +246,7 @@ int task_list(OBX_cursor* cursor, bool list_done) {
 #define ACTION_LIST_DONE 4
 #define ACTION_HELP 9
 
-int get_action(int argc, char* argv[]) {
+obx_err get_action(int argc, char* argv[]) {
     if (argc < 2) {
         return ACTION_LIST_OPEN;
     }
@@ -278,7 +278,7 @@ void usage(char* programPath) {
 }
 
 int main(int argc, char* argv[]) {
-    int rc = 0;
+    obx_err rc = 0;
 
     // determine requested action
     int action = get_action(argc, argv);
@@ -294,7 +294,7 @@ int main(int argc, char* argv[]) {
 
     printf("Using libobjectbox version %s, core version: %s\n", obx_version_string(), obx_version_core_string());
 
-    const uint32_t task_entity_id = 1; // "Task" as used in the model
+    const obx_schema_id task_entity_id = 1; // "Task" as used in the model
 
     // Firstly, we need to create a model for our data and the store
     {
@@ -328,7 +328,7 @@ int main(int argc, char* argv[]) {
         }
 
         case ACTION_DONE: {
-            uint64_t id = (uint64_t) atoll(argv[2]);
+            obx_id id = (obx_id) atol(argv[2]);
             if (!id) {
                 printf("Error parsing ID \"%s\" as a number\n", argv[2]);
                 return -1;
@@ -348,9 +348,9 @@ int main(int argc, char* argv[]) {
             break;
     }
 
-    if ((rc = obx_cursor_destroy(cursor))) goto handle_error;
+    if ((rc = obx_cursor_close(cursor))) goto handle_error;
     if ((rc = obx_txn_commit(txn))) goto handle_error;
-    if ((rc = obx_txn_destroy(txn))) goto handle_error;
+    if ((rc = obx_txn_close(txn))) goto handle_error;
 
     if ((rc = obx_store_await_async_completion(store))) goto handle_error;
     if ((rc = obx_store_close(store))) goto handle_error;
@@ -364,10 +364,10 @@ int main(int argc, char* argv[]) {
 
         // cleanup anything remaining
         if (cursor) {
-            obx_cursor_destroy(cursor);
+            obx_cursor_close(cursor);
         }
         if (txn) {
-            obx_txn_destroy(txn);
+            obx_txn_close(txn);
         }
         if (store) {
             obx_store_await_async_completion(store);

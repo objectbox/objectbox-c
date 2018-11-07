@@ -1,24 +1,25 @@
 from shutil import copy2, rmtree
 from tempfile import mkdtemp
-
 from conans import ConanFile, tools
 import os.path
 
 class ObjectboxC(ConanFile):
     name = "objectbox-c"
-    version = "0.2"
     settings = "os", "arch"
     description = "C Library for ObjectBox - a super fast embedded database for objects"
     url = "https://github.com/objectbox/objectbox-c"
     license = "Apache-2"
 
-    # Defaults for Linux, Mac, etc.; relative from objectbox-c/
-    obxBuildDir = "../cbuild/Release/objectbox-c"
+    def buildDir(self):
+        if self.settings.os == "Windows":
+            return "../visual-studio/x64/Release"
+        else:
+            return "../cbuild/" + os.environ.get('OBX_CMAKE_TOOLCHAIN', '') + "/Release/objectbox-c"
 
     def package(self):
+        obxBuildDir = self.buildDir()
         if self.settings.os == "Windows":
-            self.obxBuildDir = "../visual-studio/x64/Release"
-            dll_src = self.obxBuildDir + "/objectbox-c.dll"
+            dll_src = obxBuildDir + "/objectbox-c.dll"
             if not os.path.isfile(dll_src):
                 raise Exception("DLL does not exist: " + dll_src)
 
@@ -31,8 +32,8 @@ class ObjectboxC(ConanFile):
             rmtree(temp_dir)
         else:
             self.run("./build.sh release", cwd="..")
-            self.copy(self.obxBuildDir + "/libobjectbox.so", dst="lib")
-            self.copy(self.obxBuildDir + "/libobjectbox.dylib", dst="lib")
+            self.copy(obxBuildDir + "/libobjectbox.so", dst="lib")
+            self.copy(obxBuildDir + "/libobjectbox.dylib", dst="lib")
 
         # Platform independent
         self.copy("include/*.h")
@@ -41,10 +42,15 @@ class ObjectboxC(ConanFile):
         self.cpp_info.libs = tools.collect_libs(self)
 
     def test(self):
-        if self.settings.os != "Windows":
+        # NOTE .os_build is not defined
+        #  if self.settings.os != self.settings.os_build or self.settings.arch != self.settings.arch_build:
+        if os.environ.get('OBX_CMAKE_TOOLCHAIN', '') != "":
+            print("No tests executed because this is a cross-compilation")
+
+        elif self.settings.os != "Windows":
             print("********* Test dirs **********")
             self.run("echo \"PWD: $(pwd)\"")  # directory is build/_hash_, thus go up 2 additional levels
-            build_dir = os.path.abspath("../../" + self.obxBuildDir)
+            build_dir = os.path.abspath("../../" + self.buildDir())
             print("Build dir: " + build_dir)
 
             print("********* C tests **********")

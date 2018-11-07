@@ -10,12 +10,29 @@
 
 set -e
 
-arch=$(uname -m)
-os=$(uname)
-echo "Detected ${os} running on ${arch}"
+conf=$1
+if [[ ! $conf ]]; then
+    arch=$(uname -m)
+    os=$(uname)
+    echo "Detected ${os} running on ${arch}"
+
+    if [[ $arch == "armv7l" ]]; then
+        arch=armv7
+        echo "Selected ${arch} architecture for download"
+    fi
+
+    conf=${os}::${arch}
+else
+    echo "Using configuration ${conf}"
+fi
+
+# allow passing version as a second argument
+version=${2:-0.3}
+
+# repo as a third argument
+repoType=${3:-testing}
 
 downloadDir=download
-version=0.2
 
 while getopts v:d: opt
 do
@@ -25,22 +42,23 @@ do
    esac
 done
 
-key=${os}::${arch}
-hash=$(grep "${key}" $0 | awk '{print $NF}')
+hash=$(grep "# conan-conf ${conf}" $0 | awk '{print $NF}')
 if [ -z "$hash" ]; then
-    echo "Error: the configuration ${key} is unsupported (no Conan hash registered)."
-    echo "Please update this script. If you already did, it seems this configuration is not yet supported."
+    echo "Error: the automatically detected platform configuration ${conf} is unsupported."
+    echo "You can select the configuration manually: $0 [configuration]"
+    echo "Possible values are: "
+    awk '/^# conan-conf/ {print $3}' $0
     exit 1
 fi
 
 baseName=libobjectbox-${version}-${hash}
-archiveFile=${downloadDir}/${baseName}.tgz
-targetDir=${downloadDir}/${baseName}
+targetDir=${downloadDir}/${repoType}/${baseName}
+archiveFile=${targetDir}.tgz
 remoteRepo="https://dl.bintray.com/objectbox/conan/objectbox/objectbox-c"
-downloadUrl="${remoteRepo}/${version}/testing/package/${hash}/conan_package.tgz"
+downloadUrl="${remoteRepo}/${version}/${repoType}/package/${hash}/conan_package.tgz"
 
-echo "Downloading ObjectBox library version ${version} (${hash})..."
-mkdir -p "${downloadDir}"
+echo "Downloading ObjectBox library version ${version} ${repoType} (${hash})..."
+mkdir -p $(dirname ${archiveFile})
 
 # Support both curl and wget because their availability is platform dependent
 if [ -x "$(command -v curl)" ]; then
@@ -96,5 +114,6 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
 fi
 
 # Known Conan hashes; this script will grep for those
-# Linux::x86_64 4db1be536558d833e52e862fd84d64d75c2b3656
-# MINGW64_NT-10.0::x86_64 ca33edce272a279b24f87dc0d4cf5bbdcffbc187
+# conan-conf Linux::x86_64 4db1be536558d833e52e862fd84d64d75c2b3656
+# conan-conf Linux::armv7 d42930899c74345edc43f8b7519ec7645c13e4d8
+# conan-conf MINGW64_NT-10.0::x86_64 ca33edce272a279b24f87dc0d4cf5bbdcffbc187

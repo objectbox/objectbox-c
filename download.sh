@@ -10,27 +10,63 @@
 
 set -e
 
-conf=$1
-if [[ ! $conf ]]; then
-    arch=$(uname -m)
-    os=$(uname)
-    echo "Detected ${os} running on ${arch}"
+#default value
+quiet=false
 
-    if [[ $arch == "armv7l" ]]; then
-        arch=armv7
-        echo "Selected ${arch} architecture for download"
-    fi
-
-    conf=${os}::${arch}
-else
-    echo "Using configuration ${conf}"
-fi
+case $1 in
+-h|--help)
+    echo "download.sh [\$1:version] [\$2:repo type] [\$3:os] [\$4:arch]"
+    echo
+    echo "  Options (use at front only):"
+    echo "    --quiet: skipping asking to install to /usr/local/lib"
+    echo "    --uninstall: uninstall from /usr/local/lib"
+    exit 0
+    ;;
+--quiet)
+    quiet=true
+    shift
+    ;;
+--uninstall)
+    sudo rm -v /usr/local/lib/libobjectbox.so
+    sudo ldconfig /usr/local/lib
+    echo "Uninstalled objectbox libraries; verifying (no more output expected after this line)"
+    ldconfig -p | grep objectbox
+    exit 0
+    ;;
+esac
 
 # allow passing version as a second argument
-version=${2:-0.3}
+version=${1:-0.3}
 
 # repo as a third argument
-repoType=${3:-testing}
+repoType=${2:-testing}
+
+os=${3:-`uname`}
+arch=${4:-`uname -m`}
+echo "Base config: OS ${os} and arch ${arch}"
+
+if [[ ${os} == MINGW* ]] || [[ ${os} == CYGWIN* ]]; then
+    echo "Adjusted OS to Windows"
+    os=Windows
+fi
+
+if [[ ${os} == "Darwin" ]]; then
+    echo "Adjusted OS to Macos"
+    os=Macos
+fi
+
+if [[ $arch == armv7* ]] && [[ $arch != "armv7" ]]; then
+    arch=armv7
+    echo "Selected ${arch} architecture for download (hard FP only!)"
+fi
+
+if [[ $arch == armv6* ]] && [[ $arch != "armv6" ]]; then
+    arch=armv6
+    echo "Selected ${arch} architecture for download (hard FP only!)"
+fi
+
+conf=${os}::${arch}
+echo "Using configuration ${conf}"
 
 downloadDir=download
 
@@ -44,8 +80,8 @@ done
 
 hash=$(grep "# conan-conf ${conf}" $0 | awk '{print $NF}')
 if [ -z "$hash" ]; then
-    echo "Error: the automatically detected platform configuration ${conf} is unsupported."
-    echo "You can select the configuration manually: $0 [configuration]"
+    echo "Error: the platform configuration ${conf} is unsupported."
+    echo "You can select the configuration manually (use --help for details)"
     echo "Possible values are: "
     awk '/^# conan-conf/ {print $3}' $0
     exit 1
@@ -81,7 +117,7 @@ echo "Extracting into ${targetDir}..."
 mkdir -p "${targetDir}"
 tar -xzf "${archiveFile}" -C "${targetDir}"
 
-if [[ ${os} == MINGW* ]] || [[ ${os} == CYGWIN* ]]; then
+if [[ ${os} == Windows ]]; then
     echo "OK. The ObjectBox dll is available here:"
     dllFullPath=$(realpath ${targetDir}/lib/objectbox-c.dll)
     echo "${dllFullPath}"
@@ -90,8 +126,8 @@ if [[ ${os} == MINGW* ]] || [[ ${os} == CYGWIN* ]]; then
     exit 0 # Done, the remainder of the script is non-Windows
 fi
 
-if [[ ! -d "lib" ]]; then
-    mkdir lib
+if [[ ! -d "lib"  || ${quiet} ]]; then
+    mkdir -p lib
     cp ${targetDir}/lib/* lib/
     echo "Copied to local lib directory:"
     ls -l lib/
@@ -102,6 +138,11 @@ else
         echo "Copied; contents of the local lib directory:"
         ls -l lib/
     fi
+fi
+
+if ${quiet} ; then
+    echo "Skipping installation to /usr/local/lib in quiet mode"
+    exit 0
 fi
 
 read -p "OK. Do you want to install the library into /usr/local/lib? [y/N] " -r
@@ -115,5 +156,7 @@ fi
 
 # Known Conan hashes; this script will grep for those
 # conan-conf Linux::x86_64 4db1be536558d833e52e862fd84d64d75c2b3656
+# conan-conf Linux::armv6 4a625f0bd5f477eacd9bd35e9c44c834d057524b
 # conan-conf Linux::armv7 d42930899c74345edc43f8b7519ec7645c13e4d8
-# conan-conf MINGW64_NT-10.0::x86_64 ca33edce272a279b24f87dc0d4cf5bbdcffbc187
+# conan-conf Windows::x86_64 ca33edce272a279b24f87dc0d4cf5bbdcffbc187
+# conan-conf Macos::x86_64 46f53f156846659bf39ad6675fa0ee8156e859fe

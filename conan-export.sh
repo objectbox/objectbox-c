@@ -1,31 +1,93 @@
 #!/usr/bin/env bash
 set -e
 
+# default value
+forceAlways=false
+
+case $1 in
+-h|--help)
+    echo "conan-export.sh [\$1:version] [\$2:repo type] [\$3:os] [\$4:arch]"
+    echo
+    echo "  Use env variable OBX_CMAKE_TOOLCHAIN to export for a different toolchain (cross compilation):"
+    echo "    possible values: arm-linux-gnueabihf, arm-linux-gnueabi, armv6hf"
+    echo
+    echo "  Options (use at front only):"
+    echo "    --force: always force the export; e.g. if only the recipe exists"
+    echo "             (e.g. if you get ERROR: Package already exists)"
+    exit 0
+    ;;
+--force)
+    forceAlways=true
+    shift
+    ;;
+esac
+
 # allow passing version and channel as arguments (for CI/testing)
 version=${1:-0.3}
 repoType=${2:-testing}
+os=${3:-`uname`}
+arch=${4:-`uname -m`}
+echo "Base config: OS ${os} and arch ${arch}"
+
+if [[ ${os} == MINGW* ]] || [[ ${os} == CYGWIN* ]]; then
+    echo "Adjusted OS to Windows"
+    os=Windows
+fi
+
+if [[ ${os} == "Darwin" ]]; then
+    echo "Adjusted OS to Macos"
+    os=Macos
+fi
+
+if [[ $arch == armv7* ]] && [[ $arch != "armv7" ]]; then
+    arch=armv7
+    echo "Selected ${arch} architecture for download (hard FP only!)"
+fi
+
+if [[ $arch == armv6* ]] && [[ $arch != "armv6" ]]; then
+    arch=armv6
+    echo "Selected ${arch} architecture for download (hard FP only!)"
+fi
 
 ref=objectbox-c/${version}@objectbox/${repoType}
 existingID=$(conan search ${ref} | grep "Package_ID:" | awk '{print $NF}')
 exportArgs=
-if [ -z "$existingID" ]; then
+if ${forceAlways} ; then
+    exportArgs="$exportArgs -f"
+elif [ -z "$existingID" ]; then
     echo "$ref does not yet exist. Exporting..."
 else
     echo "$ref already exist with package ID $existingID. Forcing export..."
     exportArgs="$exportArgs -f"
 fi
 
-if [ "${OBX_CMAKE_TOOLCHAIN}" == "arm-linux-gnueabihf" ]; then
-    os=Linux
-    arch=armv7 # NOTE this is probably wrong and should be armv7hf
-elif [ "${OBX_CMAKE_TOOLCHAIN}" == "arm-linux-gnueabi" ]; then
-    os=Linux
-    arch=armv5 # NOTE armv6 is the lowest available for conan
-else
-    arch=$(uname -m)
-    os=$(uname)
+if [[ -n "${OBX_CMAKE_TOOLCHAIN}" ]]; then
+    echo "Env var OBX_CMAKE_TOOLCHAIN is set to \"${OBX_CMAKE_TOOLCHAIN}\""
+
+    if [ "${OBX_CMAKE_TOOLCHAIN}" == "arm-linux-gnueabihf" ]; then
+        os=Linux
+        arch=armv7 # Note that RPi 3 identifies as armv7 within Conan (not as armv7hf although it has HF support)
+    elif [ "${OBX_CMAKE_TOOLCHAIN}" == "arm-linux-gnueabi" ]; then
+        os=Linux
+        arch=armv5 # NOTE armv6 is the lowest available for conan
+    elif [ "${OBX_CMAKE_TOOLCHAIN}" == "armv6hf" ]; then
+        os=Linux
+        arch=armv6
+    else
+        echo "Value for OBX_CMAKE_TOOLCHAIN was not recognized"
+        exit 1
+    fi
+
+    echo "Overrides set by OBX_CMAKE_TOOLCHAIN: os=${os}, arch=${arch}"
 fi
-commonArgs="$commonArgs -s os=${os} -s arch=${arch}"
+
+if [[ -n "$os" ]]; then
+    commonArgs="$commonArgs -s os=${os}"
+fi
+
+if [[ -n "$arch" ]]; then
+    commonArgs="$commonArgs -s arch=${arch}"
+fi
 
 conan export-pkg $exportArgs $commonArgs . ${ref}
 

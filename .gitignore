@@ -2,6 +2,18 @@ download/
 lib/
 build/
 
+# DB files
+*.mdb
+
+# Build targets
+objectbox-c-test
+
+# CMake build files
+CMakeFiles/
+CMakeCache.txt
+Makefile
+cmake_install.cmake
+
 # IDE (e.g. CLion)
 .idea/
 cmake-build-debug/

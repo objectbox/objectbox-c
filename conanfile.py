@@ -19,19 +19,17 @@ class ObjectboxC(ConanFile):
     def package(self):
         obxBuildDir = self.buildDir()
         if self.settings.os == "Windows":
-            dll_src = obxBuildDir + "/objectbox-c.dll"
+            dll_src = obxBuildDir + "/objectbox.dll"
             if not os.path.isfile(dll_src):
                 raise Exception("DLL does not exist: " + dll_src)
 
-            # lib name differs in VS build, thus copy it to temp dir with the correct name for packaging
-            temp_dir = mkdtemp()
-            dll_dst = temp_dir + "/objectbox.dll"
-            copy2(dll_src, dll_dst)
-
-            self.copy(dll_dst, dst="lib")
-            rmtree(temp_dir)
+            self.copy(dll_src, dst="lib")
         else:
-            self.run("./build.sh release", cwd="..")
+            if os.environ.get('OBX_CMAKE_TOOLCHAIN', '') == "armv6hf":
+                self.run("dockcross-linux-armv6 bash -c 'OBX_CMAKE_TOOLCHAIN=armv6hf ./build.sh release'", cwd="..")
+            else:
+                self.run("./build.sh release", cwd="..")
+
             self.copy(obxBuildDir + "/libobjectbox.so", dst="lib")
             self.copy(obxBuildDir + "/libobjectbox.dylib", dst="lib")
 

@@ -147,11 +147,18 @@ fi
 
 read -p "OK. Do you want to install the library into /usr/local/lib? [y/N] " -r
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    # TODO sudo is not be available on all platforms - provide an alternative
+    # TODO sudo is OK on many Linux distros and macOS; provide an alternative for other platforms
     sudo cp ${targetDir}/lib/* /usr/local/lib
-    sudo ldconfig /usr/local/lib
-    echo "Installed objectbox libraries:"
-    ldconfig -p | grep objectbox
+    if [[ ${os} = "Macos" ]]; then
+        # No ldconfig on le mac; /usr/local/lib seemed to work fine though without further work. See also:
+        # https://developer.apple.com/library/archive/documentation/DeveloperTools/Conceptual/DynamicLibraries/100-Articles/UsingDynamicLibraries.html
+        echo "Installed objectbox libraries:"
+        ls -lh /usr/local/lib/*objectbox*
+    else
+        sudo ldconfig /usr/local/lib
+        echo "Installed objectbox libraries:"
+        ldconfig -p | grep objectbox
+    fi
 fi
 
 # Known Conan hashes; this script will grep for those

@@ -43,7 +43,7 @@ esac
 tty -s || quiet=true
 
 # allow passing version as a second argument
-version=${1:-0.3}
+version=${1:-0.4}
 
 # repo as a third argument
 repoType=${2:-testing}

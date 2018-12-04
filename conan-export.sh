@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -e
 
+cd `dirname "$0"`
+
 # default value
 forceAlways=false
 
@@ -23,7 +25,7 @@ case $1 in
 esac
 
 # allow passing version and channel as arguments (for CI/testing)
-version=${1:-0.3}
+version=${1:-0.4}
 repoType=${2:-testing}
 os=${3:-`uname`}
 arch=${4:-`uname -m`}
@@ -103,8 +105,9 @@ fi
 hashesFile=download.sh
 hashEntry=$(grep "$hash" ${hashesFile}) || true
 if [ -z "$hashEntry" ]; then
-    hashEntry="# conan-conf ${os}::${arch} ${hash}"
-    printf "\n$hashEntry" >> ${hashesFile}
+    hashEntry="${os}::${arch} ${hash}"
+    sed -i "/END_OF_HASHES/i \
+${hashEntry}" ${hashesFile}
     echo "Added hash entry ($hashEntry) to ${hashesFile}"
 else
     echo "Hash entry ($hashEntry) already present in ${hashesFile}"
@@ -120,9 +123,16 @@ if [ -z "${OBX_CMAKE_TOOLCHAIN}" ]; then
         # TODO sudo is not be available on all platforms - provide an alternative
 
         sudo cp ${localPackageLibDir}/* /usr/local/lib
-        sudo ldconfig /usr/local/lib
-        echo "Installed objectbox libraries:"
-        ldconfig -p | grep objectbox
+        if [[ ${os} = "Macos" ]]; then
+            # No ldconfig on le mac; /usr/local/lib seemed to work fine though without further work. See also:
+            # https://developer.apple.com/library/archive/documentation/DeveloperTools/Conceptual/DynamicLibraries/100-Articles/UsingDynamicLibraries.html
+            echo "Installed objectbox libraries:"
+            ls -lh /usr/local/lib/*objectbox*
+        else
+            sudo ldconfig /usr/local/lib
+            echo "Installed objectbox libraries:"
+            ldconfig -p | grep objectbox
+        fi
     fi
 fi
 

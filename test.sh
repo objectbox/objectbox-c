@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # ObjectBox C test script: download the library, build the test and run it
 
-
 if [ -z `which nproc` ]; then
     nproc() {
     	sysctl -n hw.ncpu

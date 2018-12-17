@@ -5,8 +5,11 @@ cd `dirname "$0"`
 
 # default value
 forceAlways=false
+upload=false
+quiet=false
 
-case $1 in
+while test $# -gt 0; do
+case "$1" in
 -h|--help)
     echo "conan-export.sh [\$1:version] [\$2:repo type] [\$3:os] [\$4:arch]"
     echo
@@ -22,10 +25,22 @@ case $1 in
     forceAlways=true
     shift
     ;;
+--upload)
+    upload=true
+    shift
+    ;;
+--quiet)
+    quiet=true
+    shift
+    ;; 
+*)
+    break
+    ;;
 esac
+done
 
 # allow passing version and channel as arguments (for CI/testing)
-version=${1:-0.4}
+version=${1:-0.4.1}
 repoType=${2:-testing}
 os=${3:-`uname`}
 arch=${4:-`uname -m`}
@@ -117,27 +132,35 @@ localPackageLibDir="${HOME}/.conan/data/objectbox-c/${version}/objectbox/${repoT
 echo "Local Conan lib dir: ${localPackageLibDir}"
 ls -lh "${localPackageLibDir}"
 
-if [ -z "${OBX_CMAKE_TOOLCHAIN}" ]; then
-    read -p "OK. Do you want to install the library into /usr/local/lib? [y/N] " -r
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        # TODO sudo is not be available on all platforms - provide an alternative
+if ! ${quiet} ; then
+    if [ -z "${OBX_CMAKE_TOOLCHAIN}" ]; then
+        read -p "OK. Do you want to install the library into /usr/local/lib? [y/N] " -r
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            # TODO sudo is not be available on all platforms - provide an alternative
 
-        sudo cp ${localPackageLibDir}/* /usr/local/lib
-        if [[ ${os} = "Macos" ]]; then
-            # No ldconfig on le mac; /usr/local/lib seemed to work fine though without further work. See also:
-            # https://developer.apple.com/library/archive/documentation/DeveloperTools/Conceptual/DynamicLibraries/100-Articles/UsingDynamicLibraries.html
-            echo "Installed objectbox libraries:"
-            ls -lh /usr/local/lib/*objectbox*
-        else
-            sudo ldconfig /usr/local/lib
-            echo "Installed objectbox libraries:"
-            ldconfig -p | grep objectbox
+            sudo cp ${localPackageLibDir}/* /usr/local/lib
+            if [[ ${os} = "Macos" ]]; then
+                # No ldconfig on le mac; /usr/local/lib seemed to work fine though without further work. See also:
+                # https://developer.apple.com/library/archive/documentation/DeveloperTools/Conceptual/DynamicLibraries/100-Articles/UsingDynamicLibraries.html
+                echo "Installed objectbox libraries:"
+                ls -lh /usr/local/lib/*objectbox*
+            else
+                sudo ldconfig /usr/local/lib
+                echo "Installed objectbox libraries:"
+                ldconfig -p | grep objectbox
+            fi
         fi
     fi
 fi
 
-read -p "Upload to bintray? [y/N] " -r
-if [[ $REPLY =~ ^[Yy]$ ]]; then
+if ! ${upload} ; then
+    read -p "Upload to bintray? [y/N] " -r
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        upload=true
+    fi
+fi
+
+if ${upload} ; then
     obxRemote=$(conan remote list | grep obx-bintray) || true
     echo "Using Conan remote: $obxRemote"
     if [ -z "$obxRemote" ]; then

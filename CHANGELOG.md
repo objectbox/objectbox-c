@@ -1,3 +1,7 @@
+0.4.1 (2018-12-17)
+------------------
+* Works on Ubuntu 16+
+
 0.4.0 (2018-12-04)
 ------------------
 * Add obx_cursor_count_max and obx_cursor_is_empty can be a high-performance alternative to obx_cursor_count

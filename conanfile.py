@@ -9,29 +9,43 @@ class ObjectboxC(ConanFile):
     description = "C Library for ObjectBox - a super fast embedded database for objects"
     url = "https://github.com/objectbox/objectbox-c"
     license = "Apache-2"
+    winBuildSystem = "msbuild"
 
     def buildDir(self):
         if self.settings.os == "Windows":
-            return "../visual-studio/x64/Release"
+            if self.winBuildSystem == "msbuild":
+                return "../visual-studio/" + self.getArch() + "/Release"
+            else:
+                return "../cbuild/" + self.getArch() + "/objectbox-c/Release"
+                
         else:
             return "../cbuild/" + os.environ.get('OBX_CMAKE_TOOLCHAIN', '') + "/Release/objectbox-c"
+
+    def getArch(self):
+        if self.settings.arch == "x86_64":
+            return "x64"
+        return self.settings.arch    
+
+    def copyOrFail(self, lib):
+        if not os.path.isfile(lib):
+            raise Exception("Library does not exist: " + lib)
+        self.copy(lib, dst="lib")
 
     def package(self):
         obxBuildDir = self.buildDir()
         if self.settings.os == "Windows":
-            dll_src = obxBuildDir + "/objectbox.dll"
-            if not os.path.isfile(dll_src):
-                raise Exception("DLL does not exist: " + dll_src)
-
-            self.copy(dll_src, dst="lib")
+            self.run(".\\ci\\build.bat " + self.winBuildSystem + " " + self.getArch() +" Release objectbox-c", cwd="..")
+            self.copyOrFail(obxBuildDir + "/objectbox.dll")
         else:
             if os.environ.get('OBX_CMAKE_TOOLCHAIN', '') == "armv6hf":
                 self.run("dockcross-linux-armv6 bash -c 'OBX_CMAKE_TOOLCHAIN=armv6hf ./build.sh release'", cwd="..")
             else:
                 self.run("./build.sh release", cwd="..")
 
-            self.copy(obxBuildDir + "/libobjectbox.so", dst="lib")
-            self.copy(obxBuildDir + "/libobjectbox.dylib", dst="lib")
+            if self.settings.os == "Linux":
+                self.copyOrFail(obxBuildDir + "/libobjectbox.so")
+            else:
+                self.copyOrFail(obxBuildDir + "/libobjectbox.dylib")
 
         # Platform independent
         self.copy("include/*.h")

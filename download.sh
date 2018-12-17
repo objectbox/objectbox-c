@@ -43,7 +43,7 @@ esac
 tty -s || quiet=true
 
 # allow passing version as a second argument
-version=${1:-0.4}
+version=${1:-0.4.1}
 
 # repo as a third argument
 repoType=${2:-testing}
@@ -162,15 +162,6 @@ echo "Extracting into ${targetDir}..."
 mkdir -p "${targetDir}"
 tar -xzf "${archiveFile}" -C "${targetDir}"
 
-if [[ "$os" == "Windows" ]]; then
-    echo "OK. The ObjectBox dll is available here:"
-    dllFullPath=$(realpath "${targetDir}/lib/objectbox-c.dll")
-    echo "${dllFullPath}"
-    echo "And with backslashes:"
-    echo "${dllFullPath}" | tr '/' '\\'
-    exit 0 # Done, the remainder of the script is non-Windows
-fi
-
 if [ ! -d "lib"  ] || ${quiet} ; then
     mkdir -p lib
     cp "${targetDir}"/lib/* lib/
@@ -183,6 +174,10 @@ else
         echo "Copied; contents of the local lib directory:"
         ls -l lib/
     fi
+fi
+
+if [[ "$os" == "Windows" ]]; then
+    exit 0 # Done, the remainder of the script is non-Windows
 fi
 
 if ${quiet} ; then

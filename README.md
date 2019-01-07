@@ -1,7 +1,7 @@
 ObjectBox C API
 ===============
 ObjectBox is a superfast database for objects.
-Using this C API, you can us ObjectBox as an embedded database in your C/C++ application.
+Using this C API, you can use ObjectBox as an embedded database in your C/C++ application.
 In this embedded mode, it runs within your application process.
 
 Some features

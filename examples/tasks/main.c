@@ -79,11 +79,11 @@ OBX_model* model_create(obx_schema_id task_entity_id) {
     // TASK UID must be globally unique and must not change over the life time of the entity (data loss/corruption)
 
     if (obx_model_entity(model, "Task", task_entity_id, 10001)
-        || obx_model_property(model, "id", PropertyType_Long, 1, 100010001)
-            || obx_model_property_flags(model, PropertyFlags_ID)
-        || obx_model_property(model, "text", PropertyType_String, 2, 100010002)
-        || obx_model_property(model, "date_created", PropertyType_Date, 3, 100010003)
-        || obx_model_property(model, "date_finished", PropertyType_Date, 4, 100010004)
+        || obx_model_property(model, "id", OBXPropertyType_Long, 1, 100010001)
+            || obx_model_property_flags(model, OBXPropertyFlags_ID)
+        || obx_model_property(model, "text", OBXPropertyType_String, 2, 100010002)
+        || obx_model_property(model, "date_created", OBXPropertyType_Date, 3, 100010003)
+        || obx_model_property(model, "date_finished", OBXPropertyType_Date, 4, 100010004)
 
         // TASK that we are using the propertyId & the uid of the most recently added property
         || obx_model_entity_last_property_id(model, 4, 100010004)) {

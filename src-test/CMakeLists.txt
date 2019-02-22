@@ -4,7 +4,6 @@ include_directories(../include ../external)
 
 add_executable(objectbox-c-test
         plain-c-test-main.c
-        query-test.c
         c_test_objects.c
         c_test_objects.h
         ../external/flatcc-src/builder.c

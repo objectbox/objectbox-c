@@ -24,7 +24,8 @@ class ObjectboxC(ConanFile):
     def getArch(self):
         if self.settings.arch == "x86_64":
             return "x64"
-        return self.settings.arch    
+        else:
+            return str(self.settings.arch)
 
     def copyOrFail(self, lib):
         if not os.path.isfile(lib):
@@ -37,10 +38,7 @@ class ObjectboxC(ConanFile):
             self.run(".\\ci\\build.bat " + self.winBuildSystem + " " + self.getArch() +" Release objectbox-c", cwd="..")
             self.copyOrFail(obxBuildDir + "/objectbox.dll")
         else:
-            if os.environ.get('OBX_CMAKE_TOOLCHAIN', '') == "armv6hf":
-                self.run("dockcross-linux-armv6 bash -c 'OBX_CMAKE_TOOLCHAIN=armv6hf ./build.sh release'", cwd="..")
-            else:
-                self.run("./build.sh release", cwd="..")
+            self.run("./build.sh release", cwd="..")
 
             if self.settings.os == "Linux":
                 self.copyOrFail(obxBuildDir + "/libobjectbox.so")

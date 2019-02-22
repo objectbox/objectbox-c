@@ -43,7 +43,7 @@ esac
 tty -s || quiet=true
 
 # allow passing version as a second argument
-version=${1:-0.4.1}
+version=${1:-0.5}
 
 # repo as a third argument
 repoType=${2:-testing}
@@ -120,6 +120,7 @@ HASHES="
 Linux::x86_64 4db1be536558d833e52e862fd84d64d75c2b3656
 Linux::armv6 4a625f0bd5f477eacd9bd35e9c44c834d057524b
 Linux::armv7 d42930899c74345edc43f8b7519ec7645c13e4d8
+Windows::x86 11e6a84a7894f41df553e7c92534c3bf26896802
 Windows::x86_64 ca33edce272a279b24f87dc0d4cf5bbdcffbc187
 Macos::x86_64 46f53f156846659bf39ad6675fa0ee8156e859fe
 " #END_OF_HASHES

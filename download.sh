@@ -137,7 +137,7 @@ baseName=libobjectbox-${version}-${hash}
 targetDir="${downloadDir}/${repoType}/${baseName}"
 archiveFile="${targetDir}.tgz"
 remoteRepo="https://dl.bintray.com/objectbox/conan/objectbox/objectbox-c"
-downloadUrl="${remoteRepo}/${version}/${repoType}/package/${hash}/conan_package.tgz"
+downloadUrl="${remoteRepo}/${version}/${repoType}/0/package/${hash}/0/conan_package.tgz"
 
 echo "Downloading ObjectBox library version ${version} ${repoType} (${hash})..."
 mkdir -p $(dirname ${archiveFile})

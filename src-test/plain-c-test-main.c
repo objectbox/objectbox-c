@@ -45,7 +45,7 @@ OBX_model* createModel() {
     obx_uid barTextUid = uid++;
     obx_uid barFooIdUid = uid++;
     obx_uid relUid = uid++;
-    obx_uid relIndex = 1;
+    obx_schema_id relIndex = 1;
     obx_uid relIndexUid = uid++;
 
     if (obx_model_entity(model, "Bar", BAR_entity, barUid) ||

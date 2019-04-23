@@ -341,7 +341,8 @@ obx_id obx_cursor_id_for_put(OBX_cursor* cursor, obx_id id_or_zero);
 obx_err obx_cursor_put(OBX_cursor* cursor, obx_id id, const void* data, size_t size, bool checkForPreviousValue);
 
 /// Prefer obx_cursor_put (non-padded) if possible, as this does a memcpy if the size is not dividable by 4.
-obx_err obx_cursor_put_padded(OBX_cursor* cursor, uint64_t id, const void* data, size_t size, bool checkForPreviousValue);
+obx_err obx_cursor_put_padded(OBX_cursor* cursor, uint64_t id, const void* data, size_t size,
+                              bool checkForPreviousValue);
 
 obx_err obx_cursor_get(OBX_cursor* cursor, obx_id id, void** data, size_t* size);
 

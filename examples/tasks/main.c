@@ -19,15 +19,18 @@
 // Flatbuffers builder
 #include "task_builder.h"
 
+#include <limits.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
-#include <limits.h>
-#include <libgen.h>
-#include <stdbool.h>
 
-//region Utilities
+#if !defined(_MSC_VER)
+#include <libgen.h>
+#endif
+
+// region Utilities
 int task_text(int argc, char** argv, char** outText) {
     int size = 0;
     size += argc - 2; // number of spaces between words
@@ -268,7 +271,11 @@ obx_err get_action(int argc, char* argv[]) {
 }
 
 void usage(char* programPath) {
+#if defined(_MSC_VER)
+    printf("usage: %s \n", programPath);
+#else
     printf("usage: %s \n", basename(programPath));
+#endif
     const char* format = "    %-30s %s\n";
     printf(format, "text of a new task", "create a new task with the given text");
     printf(format, "", "(default) lists active tasks");

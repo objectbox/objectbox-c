@@ -12,17 +12,17 @@ Some features
 * Zero-copy reads
 * Secondary indexes based on object properties
 * Simple get/put API
-* Asynchronous puts
+* Async API for asynchronous puts, inserts, updates, removes
 * Automatic model migration (no schema upgrade scripts etc.) 
 * Powerful queries
-* Relations to other objects (1:N for now; M:N to follow soon)
+* Relations to other objects (1:N and M:N)
 
 Foundation for Higher Languages
 -------------------------------
 The C API also serves as a basis for ObjectBox bindings in higher languages.
-For example, we provide a Go binding using the C APIs.
-In the same way you could create your own ObjectBox Python API if you wanted.
-The C API is bytes based, so you can build and read Flatbuffers table in your language of choice.
+For example, the official APIs for [Go](https://github.com/objectbox/objectbox-go), [Swift](https://github.com/objectbox/objectbox-swift) and [Python](https://github.com/objectbox/objectbox-python) rely on the C API.
+In the same way, you could create a ObjectBox API for another programming language, e.g. for Dart or JavaScript.
+For the C API, data consists of bytes representing FlatBuffers tables, which you can build and read in your language of choice.
 
 Usage and Installation
 ----------------------
@@ -50,14 +50,13 @@ To get started, please have a look at the [tasks example](examples/tasks).
 
 Current state
 -------------
-**Beta notice:** the C API is quite new and not stable yet.
-You can still use it, but prepare for e.g. functions to be renamed.
+**Beta notice:** the C API is still new and not stable yet. Prepare for e.g. functions to be renamed.
 We at ObjectBox already use the C API for other products, so we do this, too.  
 The C API is a wrapper around the stable DB core, which is version 2.x and already used on million of devices.
 
 The C API is not as convenient as the [Java/Kotlin APIs](https://docs.objectbox.io/),
 which deeply integrate into the language using e.g. [@Entity annotations](https://docs.objectbox.io/entity-annotations).
-Instead, the C API is leaves more tasks to the developer.
+Instead, the C API leaves more tasks to the developer.
 For example, you have to [create a FlatBuffers schema](https://google.github.io/flatbuffers/flatbuffers_guide_writing_schema.html) and build a corresponding ObjectBox model separately.
 While we might combine the two and provide more convenience in the future, the current version requires some boiler plate code.
 
@@ -67,7 +66,7 @@ Changelog
 
 License
 -------
-    Copyright 2018 ObjectBox Ltd. All rights reserved.
+    Copyright 2018-2019 ObjectBox Ltd. All rights reserved.
     
     Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.

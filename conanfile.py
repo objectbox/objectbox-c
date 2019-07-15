@@ -9,15 +9,10 @@ class ObjectboxC(ConanFile):
     description = "C Library for ObjectBox - a super fast embedded database for objects"
     url = "https://github.com/objectbox/objectbox-c"
     license = "Apache-2"
-    winBuildSystem = "msbuild"
 
     def buildDir(self):
         if self.settings.os == "Windows":
-            if self.winBuildSystem == "msbuild":
-                return "../visual-studio/" + self.getArch() + "/Release"
-            else:
-                return "../cbuild/" + self.getArch() + "/objectbox-c/Release"
-                
+            return "../cbuild/" + self.getArch() + "/objectbox-c/Release"
         else:
             return "../cbuild/" + os.environ.get('OBX_CMAKE_TOOLCHAIN', '') + "/Release/objectbox-c"
 
@@ -35,7 +30,7 @@ class ObjectboxC(ConanFile):
     def package(self):
         obxBuildDir = self.buildDir()
         if self.settings.os == "Windows":
-            self.run(".\\ci\\build.bat " + self.winBuildSystem + " " + self.getArch() +" Release objectbox-c", cwd="..")
+            self.run(".\\ci\\build.bat " + self.getArch() +" Release objectbox", cwd="..")
             self.copyOrFail(obxBuildDir + "/objectbox.dll")
         else:
             self.run("./build.sh release", cwd="..")
@@ -74,7 +69,7 @@ class ObjectboxC(ConanFile):
             print("********* C/CPP tests **********")
             c_cpp_test_temp_dir = mkdtemp(dir=build_dir)
             print("C CPP test dir: " + c_cpp_test_temp_dir)
-            c_cpp_test_exe = build_dir + "/test/objectbox-c-cpp-test"
+            c_cpp_test_exe = build_dir + "/objectbox-c-cpp-test"
             self.run("ls -l " + c_cpp_test_exe)
             self.run(c_cpp_test_exe, cwd=c_cpp_test_temp_dir)
             rmtree(c_cpp_test_temp_dir)

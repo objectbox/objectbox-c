@@ -40,7 +40,7 @@ esac
 done
 
 # allow passing version and channel as arguments (for CI/testing)
-version=${1:-0.5}
+version=${1:-0.6}
 repoType=${2:-testing}
 os=${3:-`uname`}
 arch=${4:-`uname -m`}

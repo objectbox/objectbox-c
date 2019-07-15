@@ -12,18 +12,12 @@ set -eu
 
 #default values
 quiet=false
-LIBRARY_SYSTEM_PATH=/usr/local/lib
+printHelp=false
 ###
 
 case ${1:-} in
 -h|--help)
-    echo "download.sh [\$1:version] [\$2:repo type] [\$3:os] [\$4:arch]"
-    echo
-    echo "  Options (use at front only):"
-    echo "    --quiet: skipping asking to install to ${LIBRARY_SYSTEM_PATH}"
-    echo "    --install: install library to ${LIBRARY_SYSTEM_PATH}"
-    echo "    --uninstall: uninstall from ${LIBRARY_SYSTEM_PATH}"
-    exit 0
+    printHelp=true
     ;;
 --quiet)
     quiet=true
@@ -42,12 +36,10 @@ esac
 
 tty -s || quiet=true
 
-# allow passing version as a second argument
+# Note: optional arguments like "--quiet" shifts argument positions in the case block above
+
 version=${1:-0.5}
-
-# repo as a third argument
 repoType=${2:-testing}
-
 os=${3:-`uname`}
 arch=${4:-`uname -m`}
 echo "Base config: OS ${os} and arch ${arch}"
@@ -77,24 +69,41 @@ echo "Using configuration ${conf}"
 
 if [[ "$os" = "Macos" ]]; then
     SO_SUFFIX=dylib
+    LIBRARY_SYSTEM_PATH=/usr/local/lib
 else
     SO_SUFFIX=so
+    LIBRARY_SYSTEM_PATH=/usr/lib
 fi
 
+if ${printHelp} ; then
+    echo "download.sh [\$1:version] [\$2:repo type] [\$3:os] [\$4:arch]"
+    echo
+    echo "  Options (use at front only):"
+    echo "    --quiet: skipping asking to install to ${LIBRARY_SYSTEM_PATH}"
+    echo "    --install: install library to ${LIBRARY_SYSTEM_PATH}"
+    echo "    --uninstall: uninstall from ${LIBRARY_SYSTEM_PATH}"
+    exit 0
+fi
+
+# sudo might not be defined (e.g. when building a docker image)
+sudo="sudo"
+if [ ! -x "$(command -v sudo)" ]; then
+    sudo=""
+fi
 
 if ${UNINSTALL_LIBRARY:-false}; then
     if ! [ -f "${LIBRARY_SYSTEM_PATH}/libobjectbox.${SO_SUFFIX}" ] ; then
         echo "${LIBRARY_SYSTEM_PATH}/libobjectbox.${SO_SUFFIX} not present"
         exit 1
     fi
-    
+
     if [[ "$os" = "Macos" ]]; then
         LINK_FIXUP_CMD=""
     else
         LINK_FIXUP_CMD="ldconfig '${LIBRARY_SYSTEM_PATH}'"
     fi
 
-    sudo bash -c "rm -fv '${LIBRARY_SYSTEM_PATH}/libobjectbox.${SO_SUFFIX}' ; ${LINK_FIXUP_CMD}"
+    $sudo bash -c "rm -fv '${LIBRARY_SYSTEM_PATH}/libobjectbox.${SO_SUFFIX}' ; ${LINK_FIXUP_CMD}"
     echo "Uninstalled objectbox libraries; verifying (no more output expected after this line)"
     if [[ "$os" = "Macos" ]]; then
         # No ldconfig on le mac; /usr/local/lib seemed to work fine though without further work. See also:
@@ -200,15 +209,21 @@ fi
 
 if ${INSTALL_LIBRARY:-false}; then
     # TODO sudo is OK on many Linux distros and macOS; provide an alternative for other platforms
-    sudo cp "${targetDir}/lib"/* ${LIBRARY_SYSTEM_PATH}
+    $sudo cp "${targetDir}/lib"/* ${LIBRARY_SYSTEM_PATH}
     if [[ "$os" = "Macos" ]]; then
         # No ldconfig on le mac; /usr/local/lib seemed to work fine though without further work. See also:
         # https://developer.apple.com/library/archive/documentation/DeveloperTools/Conceptual/DynamicLibraries/100-Articles/UsingDynamicLibraries.html
         echo "Installed objectbox libraries:"
         ls -lh ${LIBRARY_SYSTEM_PATH}/*objectbox*
     else
-        sudo ldconfig ${LIBRARY_SYSTEM_PATH}
-        echo "Installed objectbox libraries:"
-        ldconfig -p | grep objectbox
+        $sudo ldconfig ${LIBRARY_SYSTEM_PATH}
+        libinfo=$(ldconfig -p | grep objectbox || true)
+        if [[ "$libinfo" != "" ]]; then
+            echo "Installed objectbox libraries:"
+            echo "$libinfo"
+        else
+            echo "Error installing the library - not reported by ldconfig -p"
+            exit 1
+        fi
     fi
 fi

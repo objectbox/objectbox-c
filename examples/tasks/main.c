@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 ObjectBox Ltd. All rights reserved.
+ * Copyright 2018-2019 ObjectBox Ltd. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,8 +33,10 @@
 // region Utilities
 int task_text(int argc, char** argv, char** outText) {
     int size = 0;
+    int i;  // Avoid "‘for’ loop initial declarations are only allowed in C99 or C11 mode" with older compilers
+
     size += argc - 2; // number of spaces between words
-    for (int i = 1; i < argc; i++) {
+    for (i = 1; i < argc; i++) {
         size += strlen(argv[i]);
     }
 
@@ -42,7 +44,7 @@ int task_text(int argc, char** argv, char** outText) {
     if (!*outText) return -1;
 
     char* p = *outText;
-    for (int i = 1; i < argc; i++) {
+    for (i = 1; i < argc; i++) {
         strcpy(p, argv[i]);
         p += strlen(argv[i]);
         if (i != argc-1) strcpy(p++, " ");
@@ -308,13 +310,15 @@ int main(int argc, char* argv[]) {
         OBX_model* model = model_create(task_entity_id);
         if (!model) goto handle_error;
 
-        store = obx_store_open(model, NULL);
+        OBX_store_options* opt = obx_opt();
+        obx_opt_model(opt, model);
+        store = obx_store_open(opt);
         if (!store) goto handle_error;
 
         // model is freed by the obx_store_open(), we can't access it anymore
     }
 
-    txn = obx_txn_begin(store);
+    txn = obx_txn_write(store);
     if (!txn) goto handle_error;
 
     // get cursor to the entity data
@@ -356,10 +360,10 @@ int main(int argc, char* argv[]) {
     }
 
     if ((rc = obx_cursor_close(cursor))) goto handle_error;
-    if ((rc = obx_txn_commit(txn))) goto handle_error;
+    if ((rc = obx_txn_success(txn))) goto handle_error;
     if ((rc = obx_txn_close(txn))) goto handle_error;
 
-    if ((rc = obx_store_await_async_completion(store))) goto handle_error;
+    if ((!obx_store_await_async_completion(store))) goto handle_error;
     if ((rc = obx_store_close(store))) goto handle_error;
 
     return rc;

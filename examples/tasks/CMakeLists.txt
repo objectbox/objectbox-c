@@ -1,10 +1,8 @@
-cmake_minimum_required(VERSION 3.0)
-
 set(PROJECT_NAME objectbox-c-examples-tasks)
 
 project(${PROJECT_NAME} C)
 
-include_directories(../../external)
+include_directories(../../external ../../include)
 
 add_executable(${PROJECT_NAME}
         main.c

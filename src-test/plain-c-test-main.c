@@ -68,10 +68,29 @@ OBX_model* createModel() {
 obx_err testCursorStuff(OBX_cursor* cursor) {
     obx_id id = obx_cursor_id_for_put(cursor, 0);
     if (!id) return printError();
-    const char* hello = "Hello C!\0\0\0\0";  // Trailing zeros as padding (put rounds up to next %4 length)
-    printf("Putting data at ID %ld\n", (long) id);
-    size_t size = strlen(hello) + 1;
-    if (obx_cursor_put(cursor, id, hello, size, 0)) return printError();
+
+    flatcc_builder_t builder;
+
+    if (create_foo(&builder, id, "bar")) {
+        printf("Failed to create an object");
+        flatcc_builder_clear(&builder);
+        return 1;
+    }
+
+    size_t size;
+    void* buffer = flatcc_builder_get_direct_buffer(&builder, &size);
+    if (!buffer) {
+        printf("Can't get FBB buffer");
+        flatcc_builder_clear(&builder);
+        return 1;
+    }
+
+    if (obx_cursor_put(cursor, id, buffer, size, 0)) {
+        flatcc_builder_clear(&builder);
+        return printError();
+    } else {
+        flatcc_builder_clear(&builder);
+    }
 
     void* dataRead;
     size_t sizeRead;
@@ -104,32 +123,6 @@ obx_err testCursorStuff(OBX_cursor* cursor) {
         return 1;
     }
 
-    return OBX_SUCCESS;
-}
-
-obx_err testQueryNoData(OBX_cursor* cursor, OBX_store* store) {
-    OBX_query_builder* builder = obx_qb_create(store, 1);
-    assert(builder);
-
-    OBX_query* query = obx_query_create(builder);
-    assert(query);
-
-    OBX_bytes_array* bytesArray = obx_query_find(query, cursor, 0, 0);
-    if (!bytesArray) {
-        printf("Query failed\n");
-        return -99;
-    }
-    if (bytesArray->bytes) {
-        printf("Query tables value\n");
-        return -98;
-    }
-    if (bytesArray->count) {
-        printf("Query table size value\n");
-        return -98;
-    }
-    obx_bytes_array_free(bytesArray);
-    obx_query_close(query);
-    obx_qb_close(builder);
     return OBX_SUCCESS;
 }
 
@@ -183,20 +176,21 @@ int main(int argc, char* args[]) {
     OBX_txn* txn = NULL;
     OBX_cursor* cursor = NULL;
     OBX_cursor* cursor_bar = NULL;
-    OBX_box* box = NULL;
 
     // Firstly, we need to create a model for our data and the store
     {
         OBX_model* model = createModel();
         if (!model) goto handle_error;
 
-        store = obx_store_open(model, NULL);
+        OBX_store_options* opt = obx_opt();
+        obx_opt_model(opt, model);
+        store = obx_store_open(opt);
         if (!store) goto handle_error;
 
         // model is freed by the obx_store_open(), we can't access it anymore
     }
 
-    txn = obx_txn_begin(store);
+    txn = obx_txn_write(store);
     if (!txn) goto handle_error;
 
     cursor = obx_cursor_create(txn, FOO_entity);
@@ -210,7 +204,6 @@ int main(int argc, char* args[]) {
 
     int rc;
 
-    if ((rc = testQueryNoData(cursor, store))) goto handle_error;
     if ((rc = testCursorStuff(cursor))) goto handle_error;
 
     if ((rc = testFlatccRoundtrip())) goto handle_error;
@@ -218,8 +211,10 @@ int main(int argc, char* args[]) {
 
     if (obx_cursor_close(cursor)) goto handle_error;
     if (obx_cursor_close(cursor_bar)) goto handle_error;
-    if (obx_txn_commit(txn)) goto handle_error;
+    if (obx_txn_success(txn)) goto handle_error;
     if (obx_txn_close(txn)) goto handle_error;
+    if (!obx_store_await_async_completion(store)) goto handle_error;
+    if (obx_store_close(store)) goto handle_error;
 
     return 0;
 
@@ -234,9 +229,6 @@ handle_error:
     }
     if (txn) {
         obx_txn_close(txn);
-    }
-    if (box) {
-        obx_box_close(box);
     }
     if (store) {
         obx_store_await_async_completion(store);

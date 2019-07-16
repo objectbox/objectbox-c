@@ -39,7 +39,7 @@ tty -s || quiet=true
 
 # Note: optional arguments like "--quiet" shifts argument positions in the case block above
 
-version=${1:-0.5}
+version=${1:-0.6.0}
 repoType=${2:-testing}
 os=${3:-$(uname)}
 arch=${4:-$(uname -m)}
@@ -235,8 +235,8 @@ if ${quiet} ; then
     fi
 else
     if [ -z "${installLibrary:-}" ] && [ -n "${libDirectory}" ]; then
-        read -p "OK. Do you want to install the library into ${libDirectory}? [y/N] " -r
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
+        read -p "OK. Do you want to install the library into ${libDirectory}? [Y/n] " -r
+        if [[ $REPLY =~ ^[Yy]$ ]] || [[ -z "$REPLY" ]] ; then
             installLibrary=true
 
             if [ -n "${oldLibDir}" ] && [ -f "${oldLibDir}/${libFileName}" ] ; then

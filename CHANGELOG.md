@@ -1,13 +1,14 @@
 0.6.0 (2019-07-15)
 ------------------
-* Box API is now on par with Cursor API. The Box API does implicit transactions and is thus simpler to use. 
+* Box API is now on a par with Cursor API.
+  The Box API is usually preferred because it comes with implicit transaction management. 
   * Boxes don't have to be closed anymore (obx_box_close() removed) 
   * Basic operations like obx_box_get(), obx_box_put_many(), obx_box_remove()
   * Relation operations
 * Transactions can now be created recursively.
   The most outer transaction defines the transaction scope for the database.
 * New async API (OBX_async struct) including put, insert, update and remove operations
-* New Property queries to operate on single properties (note: APIs will change with next release)
+* New property queries to operate on single properties (note: APIs will change with next release)
 * Several smaller improvements; e.g.
   obx_query_* functions don't require a cursor anymore, added obx_store_await_async_submitted(), ...
 

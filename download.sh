@@ -13,6 +13,7 @@ set -eu
 #default values
 quiet=false
 printHelp=false
+libBuildDir="$(pwd)/lib"
 ###
 
 case ${1:-} in
@@ -25,11 +26,11 @@ case ${1:-} in
     ;;
 --install)
     quiet=true
-    INSTALL_LIBRARY=true
+    installLibrary=true
     shift
     ;;
 --uninstall)
-    UNINSTALL_LIBRARY=true
+    uninstallLibrary=true
     shift
     ;;
 esac
@@ -40,8 +41,8 @@ tty -s || quiet=true
 
 version=${1:-0.5}
 repoType=${2:-testing}
-os=${3:-`uname`}
-arch=${4:-`uname -m`}
+os=${3:-$(uname)}
+arch=${4:-$(uname -m)}
 echo "Base config: OS ${os} and arch ${arch}"
 
 if [[ "$os" == MINGW* ]] || [[ "$os" == CYGWIN* ]]; then
@@ -67,51 +68,87 @@ fi
 conf="${os}::${arch}"
 echo "Using configuration ${conf}"
 
-if [[ "$os" = "Macos" ]]; then
-    SO_SUFFIX=dylib
-    LIBRARY_SYSTEM_PATH=/usr/local/lib
-else
-    SO_SUFFIX=so
-    LIBRARY_SYSTEM_PATH=/usr/lib
-fi
-
-if ${printHelp} ; then
-    echo "download.sh [\$1:version] [\$2:repo type] [\$3:os] [\$4:arch]"
-    echo
-    echo "  Options (use at front only):"
-    echo "    --quiet: skipping asking to install to ${LIBRARY_SYSTEM_PATH}"
-    echo "    --install: install library to ${LIBRARY_SYSTEM_PATH}"
-    echo "    --uninstall: uninstall from ${LIBRARY_SYSTEM_PATH}"
-    exit 0
-fi
-
 # sudo might not be defined (e.g. when building a docker image)
 sudo="sudo"
 if [ ! -x "$(command -v sudo)" ]; then
     sudo=""
 fi
 
-if ${UNINSTALL_LIBRARY:-false}; then
-    if ! [ -f "${LIBRARY_SYSTEM_PATH}/libobjectbox.${SO_SUFFIX}" ] ; then
-        echo "${LIBRARY_SYSTEM_PATH}/libobjectbox.${SO_SUFFIX} not present"
+# original location where we installed in previous versions of this script
+oldLibDir=
+
+if [[ "$os" = "Macos" ]]; then
+    libFileName=libobjectbox.dylib
+    libDirectory=/usr/local/lib
+elif [[ "$os" = "Windows" ]]; then
+    libFileName=objectbox.dll
+
+    # this doesn't work in Git Bash, fails silently
+    # sudo="runas.exe /user:administrator"
+    # libDirectory=/c/Windows/System32
+
+    # try to determine library path based on gcc.exe path
+    libDirectory=""
+    if [ -x "$(command -v gcc)" ] && [ -x "$(command -v dirname)" ] && [ -x "$(command -v realpath)" ]; then
+        libDirectory=$(realpath "$(dirname "$(command -v gcc)")/../lib")
+    fi
+else
+    libFileName=libobjectbox.so
+    libDirectory=/usr/lib
+    oldLibDir=/usr/local/lib
+fi
+
+
+function printUsage() {
+    echo "download.sh [\$1:version] [\$2:repo type] [\$3:os] [\$4:arch]"
+    echo
+    echo "  Options (use at front only):"
+    echo "    --quiet: skipping asking to install to ${libDirectory}"
+    echo "    --install: install library to ${libDirectory}"
+    echo "    --uninstall: uninstall from ${libDirectory}"
+}
+
+if ${printHelp} ; then
+    printUsage
+    exit 0
+fi
+
+function uninstallLib() {
+    dir=${1}
+
+    if ! [ -f "${dir}/${libFileName}" ] ; then
+        echo "${dir}/${libFileName} doesn't exist, can't uninstall"
         exit 1
     fi
 
-    if [[ "$os" = "Macos" ]]; then
-        LINK_FIXUP_CMD=""
+    echo "Removing ${dir}/${libFileName}"
+
+    if [ -x "$(command -v ldconfig)" ]; then
+        linkerUpdateCmd="ldconfig ${dir}"
     else
-        LINK_FIXUP_CMD="ldconfig '${LIBRARY_SYSTEM_PATH}'"
+        linkerUpdateCmd=""
     fi
 
-    $sudo bash -c "rm -fv '${LIBRARY_SYSTEM_PATH}/libobjectbox.${SO_SUFFIX}' ; ${LINK_FIXUP_CMD}"
-    echo "Uninstalled objectbox libraries; verifying (no more output expected after this line)"
-    if [[ "$os" = "Macos" ]]; then
-        # No ldconfig on le mac; /usr/local/lib seemed to work fine though without further work. See also:
-        # https://developer.apple.com/library/archive/documentation/DeveloperTools/Conceptual/DynamicLibraries/100-Articles/UsingDynamicLibraries.html
-        ls -lh ${LIBRARY_SYSTEM_PATH}/* | grep objectbox # globbing would give "no such file" error
+    $sudo bash -c "rm -fv '${dir}/${libFileName}' ; ${linkerUpdateCmd}"
+}
+
+if ${uninstallLibrary:-false}; then
+    uninstallLib "${libDirectory}"
+
+    if [ -x "$(command -v ldconfig)" ]; then
+        libInfo=$(ldconfig -p | grep "${libFileName}" || true)
     else
-        ldconfig -p | grep objectbox
+        libInfo=$(ls -lh ${libDirectory}/* | grep "${libFileName}" || true) # globbing would give "no such file" error
     fi
+
+    if [ -z "${libInfo}" ]; then
+        echo "Uninstall successful"
+    else
+        echo "Uninstall failed, leftover files:"
+        echo "${libInfo}"
+        exit 1
+    fi
+
     exit 0
 fi
 
@@ -119,9 +156,11 @@ downloadDir=download
 
 while getopts v:d: opt
 do
-   case $opt in
-       d) downloadDir=$OPTARG;;
-       v) version=$OPTARG;;
+    case $opt in
+        d) downloadDir=$OPTARG;;
+        v) version=$OPTARG;;
+        *) printUsage
+           exit 1 ;;
    esac
 done
 
@@ -149,7 +188,7 @@ remoteRepo="https://dl.bintray.com/objectbox/conan/objectbox/objectbox-c"
 downloadUrl="${remoteRepo}/${version}/${repoType}/0/package/${hash}/0/conan_package.tgz"
 
 echo "Downloading ObjectBox library version ${version} ${repoType} (${hash})..."
-mkdir -p $(dirname ${archiveFile})
+mkdir -p "$(dirname "${archiveFile}")"
 
 # Support both curl and wget because their availability is platform dependent
 if [ -x "$(command -v curl)" ]; then
@@ -172,58 +211,63 @@ echo "Extracting into ${targetDir}..."
 mkdir -p "${targetDir}"
 tar -xzf "${archiveFile}" -C "${targetDir}"
 
-if [ ! -d "lib"  ] || ${quiet} ; then
-    mkdir -p lib
-    cp "${targetDir}"/lib/* lib/
-    echo "Copied to local lib directory:"
-    ls -l lib/
+if [ ! -d "${libBuildDir}"  ] || ${quiet} ; then
+    mkdir -p "${libBuildDir}"
+    cp "${targetDir}"/lib/* "${libBuildDir}"
+    echo "Copied to ${libBuildDir}:"
+    ls -l "${libBuildDir}"
 else
-    read -p "Local lib directory already exists. Copy the just downloaded library to it? [Y/n] " -r
+    read -p "${libBuildDir} already exists. Copy the just downloaded library to it? [Y/n] " -r
     if [[ $REPLY =~ ^[Yy]$ ]] || [[ -z "$REPLY" ]] ; then
-        cp "${targetDir}"/lib/* lib/
-        echo "Copied; contents of the local lib directory:"
-        ls -l lib/
+        cp "${targetDir}"/lib/* "${libBuildDir}"
+        echo "Copied; contents of ${libBuildDir}:"
+        ls -l "${libBuildDir}"
     fi
-fi
-
-if [[ "$os" == "Windows" ]]; then
-    exit 0 # Done, the remainder of the script is non-Windows
 fi
 
 if ${quiet} ; then
-    if ! ${INSTALL_LIBRARY:-false}; then
-        echo "Skipping installation to ${LIBRARY_SYSTEM_PATH} in quiet mode"
-        if [ -f "${LIBRARY_SYSTEM_PATH}/libobjectbox.${SO_SUFFIX}" ]; then
+    if ! ${installLibrary:-false}; then
+        echo "Skipping installation to ${libDirectory} in quiet mode"
+        if [ -f "${libDirectory}/${libFileName}" ]; then
             echo "However, you have a library there:"
-            ls -l "${LIBRARY_SYSTEM_PATH}/libobjectbox.${SO_SUFFIX}"
+            ls -l "${libDirectory}/${libFileName}"
         fi
     fi
 else
-    if [ -z "${INSTALL_LIBRARY:-}" ]; then
-        read -p "OK. Do you want to install the library into ${LIBRARY_SYSTEM_PATH}? [y/N] " -r
+    if [ -z "${installLibrary:-}" ] && [ -n "${libDirectory}" ]; then
+        read -p "OK. Do you want to install the library into ${libDirectory}? [y/N] " -r
         if [[ $REPLY =~ ^[Yy]$ ]]; then
-            INSTALL_LIBRARY=true
+            installLibrary=true
+
+            if [ -n "${oldLibDir}" ] && [ -f "${oldLibDir}/${libFileName}" ] ; then
+                echo "Found an old installation in ${oldLibDir} but a new one is going to be placed in ${libDirectory}."
+                echo "It's recommended to uninstall the old library to avoid problems."
+                read -p "Uninstall from old location? [Y/n] " -r
+                if [[ $REPLY =~ ^[Yy]$ ]] || [[ -z "$REPLY" ]] ; then
+                    uninstallLib ${oldLibDir}
+                fi
+            fi
+
         fi
     fi
 fi
 
-if ${INSTALL_LIBRARY:-false}; then
-    # TODO sudo is OK on many Linux distros and macOS; provide an alternative for other platforms
-    $sudo cp "${targetDir}/lib"/* ${LIBRARY_SYSTEM_PATH}
-    if [[ "$os" = "Macos" ]]; then
-        # No ldconfig on le mac; /usr/local/lib seemed to work fine though without further work. See also:
-        # https://developer.apple.com/library/archive/documentation/DeveloperTools/Conceptual/DynamicLibraries/100-Articles/UsingDynamicLibraries.html
-        echo "Installed objectbox libraries:"
-        ls -lh ${LIBRARY_SYSTEM_PATH}/*objectbox*
+if ${installLibrary:-false}; then
+    echo "Installing ${libDirectory}/${libFileName}"
+    $sudo cp "${targetDir}/lib/${libFileName}" ${libDirectory}
+
+    if [ -x "$(command -v ldconfig)" ]; then
+        $sudo ldconfig "${libDirectory}"
+        libInfo=$(ldconfig -p | grep "${libFileName}" || true)
     else
-        $sudo ldconfig ${LIBRARY_SYSTEM_PATH}
-        libinfo=$(ldconfig -p | grep objectbox || true)
-        if [[ "$libinfo" != "" ]]; then
-            echo "Installed objectbox libraries:"
-            echo "$libinfo"
-        else
-            echo "Error installing the library - not reported by ldconfig -p"
-            exit 1
-        fi
+        libInfo=$(ls -lh ${libDirectory}/* | grep "${libFileName}" || true) # globbing would give "no such file" error
+    fi
+
+    if [ -z "${libInfo}" ]; then
+        echo "Error installing the library - not found"
+        exit 1
+    else
+        echo "Installed objectbox libraries:"
+        echo "${libInfo}"
     fi
 fi

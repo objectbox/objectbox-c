@@ -1,6 +1,6 @@
 ObjectBox C API
 ===============
-ObjectBox is a superfast database for objects.
+[ObjectBox](https://objectbox.io) is a superfast database for objects.
 Using this C API, you can us ObjectBox as an embedded database in your C/C++ application.
 In this embedded mode, it runs within your application process.
 
@@ -35,7 +35,10 @@ There are a couple of ways to get the library:
 
 * Using the download.sh script (on Windows, use something like Git Bash to run it)
     * Either clone the repo and run `./download.sh`
-    * ... or just download [download.sh](download.sh), run `chmod +x download.sh` and `./download.sh`
+    * ... or download [download.sh](download.sh) and run it in a terminal:<br> 
+      `wget https://raw.githubusercontent.com/objectbox/objectbox-c/master/download.sh`<br>
+      `chmod +x download.sh`<br>
+      `./download.sh`
 * Conan (wip, details coming later): https://bintray.com/objectbox/conan/objectbox-c%3Aobjectbox
 
 Details on the download.sh script:
@@ -50,25 +53,26 @@ Examples & API Documentation
 Documentation is still on-going work.
 To get started, please have a look at the [tasks example](examples/tasks).
 
+For an API reference check one of those:
+
+* [include/objectbox.h](include/objectbox.h): single header file 
+* [API reference docs](https://objectbox.io/docfiles/c/): online HTML docs (Doxygen) 
+
 Current state / Changelog
 -------------------------
-**Beta notice:** the C API become stable starting from version 1.0.
-Until then, API improvements may result in breaking changes, for example functions may be renamed.
+The C API is a thin wrapper around a robust DB core, which is version 2.x and already used on million of devices.
+
+**Beta notice:** the C API will become stable starting from version 1.0.
+Until then, API improvements may result in breaking changes. For example, functions may still be renamed.
 
 **[Changelog](CHANGELOG.md):** If you update from a previous version, please check the [changelog](CHANGELOG.md).
-Besides new features, there may be breaking changes, which might require changes to your code. 
-
-The C API is a thin wrapper around a robust DB core, which is version 2.x and already used on million of devices.
+Besides new features, there may be breaking changes requiring modifications to your code. 
 
 **Object convenience:** The C API is currently not as convenient as the APIs for [Go](https://golang.objectbox.io/), [Swift](https://swift.objectbox.io/) or [Java/Kotlin](https://docs.objectbox.io/),
 which deeply integrate into the language using e.g. [@Entity annotations](https://docs.objectbox.io/entity-annotations).
 Instead, the C API leaves more tasks to the developer.
 For example, you have to [create a FlatBuffers schema](https://google.github.io/flatbuffers/flatbuffers_guide_writing_schema.html) and build a corresponding ObjectBox model separately.
 While we might combine the two and provide more convenience in the future, the current version requires some boiler plate code.
-
-Changelog
----------
-[CHANGELOG.md](CHANGELOG.md)
 
 License
 -------

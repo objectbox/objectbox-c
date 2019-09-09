@@ -1,3 +1,25 @@
+0.7.0 (2019-09-09)
+------------------
+* Added observers to listen to data changes (e.g. obx_observe())
+* Added obx_last_error_pop() to get and reset the last error
+* Added obx_box_rel_get_backlink_ids() to get backlinks of standalone relations
+* iOS and macOS related improvements; e.g. obx_posix_sem_prefix_set() for sand-boxed macOS apps
+* Better resilience for passing in NULL for many functions
+* Improved API docs
+    * Quite a few functions got comments
+    * Online API docs (Doxygen)  
+* Minor fixes
+
+### (Breaking) Changes
+
+* **obx_txn_success(txn) now also closes the transaction making a subsequent obx_txn_close(txn) unnecessary and illegal.**
+  Please adjust your code using one of two possibilities (depending on your code flow):
+   * drop `obx_txn_close(txn)` after calling `obx_txn_success(txn)`, or
+   * replace `obx_txn_success(txn)` with `obx_txn_mark_success(txn, true)` if you want to keep `obx_txn_close(txn)`
+* Function renames to drop "create" postfix:
+  obx_query_builder(), obx_query(), obx_cursor(), obx_model(), obx_bytes_array(), obx_id_array()
+* Property queries API clean up using a OBX_query_prop struct 
+
 0.6.0 (2019-07-15)
 ------------------
 * Box API is now on a par with Cursor API.
@@ -8,7 +30,8 @@
 * Transactions can now be created recursively.
   The most outer transaction defines the transaction scope for the database.
 * New async API (OBX_async struct) including put, insert, update and remove operations
-* New property queries to operate on single properties (note: APIs will change with next release)
+* Added property queries with results referring to single property (not complete objects).
+  Note: APIs will change with next release.
 * Several smaller improvements; e.g.
   obx_query_* functions don't require a cursor anymore, added obx_store_await_async_submitted(), ...
 

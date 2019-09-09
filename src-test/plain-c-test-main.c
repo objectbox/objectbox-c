@@ -22,7 +22,7 @@ obx_err printError() {
 }
 
 OBX_model* createModel() {
-    OBX_model* model = obx_model_create();
+    OBX_model* model = obx_model();
     if (!model) {
         return NULL;
     }
@@ -193,9 +193,9 @@ int main(int argc, char* args[]) {
     txn = obx_txn_write(store);
     if (!txn) goto handle_error;
 
-    cursor = obx_cursor_create(txn, FOO_entity);
+    cursor = obx_cursor(txn, FOO_entity);
     if (!cursor) goto handle_error;
-    cursor_bar = obx_cursor_create(txn, BAR_entity);
+    cursor_bar = obx_cursor(txn, BAR_entity);
     if (!cursor_bar) goto handle_error;
 
     // Clear any existing data
@@ -209,10 +209,10 @@ int main(int argc, char* args[]) {
     if ((rc = testFlatccRoundtrip())) goto handle_error;
     if ((rc = testPutAndGetFlatObjects(cursor))) goto handle_error;
 
+    // TODO fix double close in handle_error if a close returns an error
     if (obx_cursor_close(cursor)) goto handle_error;
     if (obx_cursor_close(cursor_bar)) goto handle_error;
     if (obx_txn_success(txn)) goto handle_error;
-    if (obx_txn_close(txn)) goto handle_error;
     if (!obx_store_await_async_completion(store)) goto handle_error;
     if (obx_store_close(store)) goto handle_error;
 

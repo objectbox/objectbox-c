@@ -19,6 +19,7 @@
 // Flatbuffers builder
 #include "task_builder.h"
 
+#include <inttypes.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -30,228 +31,437 @@
 #include <libgen.h>
 #endif
 
-// region Utilities
-int task_text(int argc, char** argv, char** outText) {
-    int size = 0;
-    int i;  // Avoid "‘for’ loop initial declarations are only allowed in C99 or C11 mode" with older compilers
+#define DATE_FORMAT_STRING "%Y-%m-%d %H:%M:%S"
+#define DATE_BUFFER_LENGTH 100
 
-    size += argc - 2; // number of spaces between words
-    for (i = 1; i < argc; i++) {
-        size += strlen(argv[i]);
-    }
+// For this example, the database schema will contain one entity type, "Task,"
+// and we'll give it the arbitrary local id 1
+static const obx_schema_id TASK_SCHEMA_ENTITY_ID = 1;
 
-    *outText = (char*) malloc(sizeof(char) * (size + 1));
-    if (!*outText) return -1;
-
-    char* p = *outText;
-    for (i = 1; i < argc; i++) {
-        strcpy(p, argv[i]);
-        p += strlen(argv[i]);
-        if (i != argc-1) strcpy(p++, " ");
-    }
-
-    return size;
-}
-
-uint64_t timestamp_now() {
-    return (uint64_t) (time(NULL) * 1000);
-}
-
-void timestamp_parse(uint64_t timestamp, const char* date_format, size_t date_buffer_length, char** outString) {
-    if (!timestamp) {
-        // empty string
-        memset(*outString, 0, date_buffer_length);
-    } else {
-        time_t time = (time_t) (timestamp / 1000);
-        struct tm* tm_info = localtime(&time);
-        strftime(*outString, date_buffer_length, date_format, tm_info);
-    }
-}
-
-obx_err error_print() {
-    printf("Unexpected error: %d, %d (%s)\n", obx_last_error_code(), obx_last_error_secondary(), obx_last_error_message());
-    return obx_last_error_code();
-}
-//endregion
-
-OBX_model* model_create(obx_schema_id task_entity_id) {
-    OBX_model* model = obx_model_create();
-    if (!model) {
-        return NULL;
-    }
-
-    // create an entity for the Task
-    // TASK UID must be globally unique and must not change over the life time of the entity (data loss/corruption)
-
-    if (obx_model_entity(model, "Task", task_entity_id, 10001)
-        || obx_model_property(model, "id", OBXPropertyType_Long, 1, 100010001)
-            || obx_model_property_flags(model, OBXPropertyFlags_ID)
-        || obx_model_property(model, "text", OBXPropertyType_String, 2, 100010002)
-        || obx_model_property(model, "date_created", OBXPropertyType_Date, 3, 100010003)
-        || obx_model_property(model, "date_finished", OBXPropertyType_Date, 4, 100010004)
-
-        // TASK that we are using the propertyId & the uid of the most recently added property
-        || obx_model_entity_last_property_id(model, 4, 100010004)) {
-
-        obx_model_free(model);
-        return NULL;
-    }
-
-    obx_model_last_entity_id(model, task_entity_id, 10001);
-    return model;
-}
-
-obx_err task_build(flatcc_builder_t* B, obx_id id, const char* text, uint64_t date_created, uint64_t date_finished) {
-    obx_err rc;
-    if ((rc = Task_start_as_root(B))) return rc;
-    if ((rc = Task_id_add(B, id))) return rc;
-    if ((rc = Task_text_create(B, text, strlen(text)))) return rc;
-    if ((rc = Task_date_created_add(B, date_created))) return rc;
-    if ((rc = Task_date_finished_add(B, date_finished))) return rc;
-    flatbuffers_buffer_ref_t root = Task_end_as_root(B);
-    return 0;
-}
-
-obx_err task_put(OBX_cursor* cursor, obx_id id, const char* text, uint64_t date_created, uint64_t date_finished) {
-    // TASK the flatbuffer builder should be reused instead of created on demand, refer to the flatbuffer documentation for more details
-    flatcc_builder_t builder;
-
-    // Initialize the builder object.
-    flatcc_builder_init(&builder);
-
-    obx_err rc = 0;
-    if ((rc = task_build(&builder, id, text, date_created, date_finished))) {
-        printf("%s error: %d (task_build)\n", __FUNCTION__, rc);
-    }
-
-    if (!rc) {
-        size_t size;
-        void* buffer = flatcc_builder_get_direct_buffer(&builder, &size);
-
-        if (!buffer) {
-            rc = -1;
-            printf("%s error: %d (could not get direct buffer)\n", __FUNCTION__, rc);
-
-        } else {
-            // write prepared buffer to the storage
-            rc = obx_cursor_put(cursor, id, buffer, size, 0);
-        }
-    }
-
-    flatcc_builder_clear(&builder);
-    return rc;
-}
-
-obx_err task_create(OBX_cursor* cursor, char* text) {
-    obx_err rc = 0;
-
-    uint64_t count = 0;
-    if ((rc = obx_cursor_count(cursor, &count))) goto finalize;
-
-    // put a new task to the box
-    {
-        obx_id id = obx_cursor_id_for_put(cursor, 0);
-        if (!id) {
-            rc = (rc = obx_last_error_code()) ? rc : -1;
-            goto finalize;
-        }
-
-        printf("New task: %ld - %s\n", (long) id, text);
-
-        if ((rc = task_put(cursor, id, text, timestamp_now(), 0))) {
-            printf("Failed to create the task\n");
-            goto finalize;
-        } else {
-            printf("Successfully created the task\n");
-        }
-    }
-
-    if ((rc = obx_cursor_count(cursor, &count))) goto finalize;
-    printf("Count after insert = %ld\n", (long) count);
-
-    finalize:
-        free(text);
-        return rc;
-}
-
-obx_err task_done(OBX_cursor* cursor, obx_id id) {
-    obx_err rc = 0;
-
-    void* data;
-    size_t size;
-    rc = obx_cursor_get(cursor, id, &data, &size);
-
-    if (rc == OBX_NOT_FOUND) {
-        printf("Task %ld not found\n", (long) id);
-
-    } else if (rc != 0) {
-        printf("Error occurred during task %ld selection: %d\n", (long) id, rc);
-
-    } else {
-        Task_table_t task = Task_as_root(data);
-
-        if (Task_date_finished(task)) {
-            printf("Task %ld has already been done\n", (long) id);
-        } else {
-            printf("Setting task %ld as done", (long) id);
-            rc = task_put(cursor, Task_id(task), Task_text(task), Task_date_created(task), timestamp_now());
-        }
-    }
-
-    return rc;
-}
-
-obx_err task_list(OBX_cursor* cursor, bool list_done) {
-    obx_err rc = 0;
-
-    void* data;
-    size_t size;
-
-    rc = obx_cursor_first(cursor, &data, &size);
-
-    if (rc == OBX_NOT_FOUND) {
-        printf("There are no tasks\n");
-        return 0;
-    }
-
-    size_t date_buffer_length = 100;
-    const char* date_format = "%Y-%m-%d %H:%M:%S";
-
-    char* date_created = (char*) malloc(sizeof(char) * date_buffer_length);
-    if (!date_created) return -1;
-    memset(date_created, 0, date_buffer_length);
-
-    char* date_finished = (char*) malloc(sizeof(char) * date_buffer_length);
-    if (!date_finished) return -1;
-    memset(date_finished, 0, date_buffer_length);
-
-    printf("%3s  %-19s  %-19s  %s\n", "ID", "Created", "Finished", "Text");
-
-    do {
-        Task_table_t task = Task_as_root(data);
-
-        if (Task_date_finished(task) && !list_done) continue;
-
-        timestamp_parse(Task_date_created(task), date_format, date_buffer_length, &date_created);
-        timestamp_parse(Task_date_finished(task), date_format, date_buffer_length, &date_finished);
-
-        printf("%3ld  %-19s  %-19s  %s\n", (long) Task_id(task), date_created, date_finished, Task_text(task));
-
-    } while (0 == (rc = obx_cursor_next(cursor, &data, &size)));
-
-    free(date_created);
-    free(date_finished);
-    return (rc == OBX_NOT_FOUND) ? 0 : rc;
-}
-
-
+// List of action codes returned by parse_action
 #define ACTION_NEW 1
 #define ACTION_DONE 2
 #define ACTION_LIST_OPEN 3
 #define ACTION_LIST_DONE 4
 #define ACTION_HELP 9
 
-obx_err get_action(int argc, char* argv[]) {
+// Utility functions
+OBX_model* model_create();
+int parse_action(int argc, char* argv[]);
+int parse_text(int argc, char** argv, char** outText);
+uint64_t timestamp_now();
+int task_build(void** out_buff, size_t* out_size, obx_id id, const char* text, uint64_t date_created,
+               uint64_t date_finished);
+void date_to_str(char* buff, uint64_t timestamp);
+
+// functions to handle each requested action
+void do_action_help(char* program_path);
+int do_action_new(OBX_store* store, int argc, char* argv[]);
+int do_action_done(OBX_store* store, int argc, char* argv[]);
+int do_action_list(OBX_store* store, bool list_open);
+
+//--------------------------------------------------------------------------------------------------------------------
+// main - parse the action from the command line. If required, open an ObjectBox store,
+// call the corresponding action function and then clean up the store, printing out
+// the error code, if an error has occurred
+//--------------------------------------------------------------------------------------------------------------------
+
+OBX_store* store_open();
+
+int main(int argc, char* argv[]) {
+    obx_err rc = 0;
+
+    // print version of ObjectBox in use
+    printf("Using libobjectbox version %s, core version: %s\n", obx_version_string(), obx_version_core_string());
+
+    // determine requested action
+    int action = parse_action(argc, argv);
+
+    // early out if we're just printing the usage
+    if (action == ACTION_HELP) {
+        do_action_help(argv[0]);
+        return rc;
+    }
+
+    // An OBX_store represents the database, so let's open one
+    OBX_store* store = store_open();
+    if (store == NULL) {
+        printf("Could not open store: %s (%d)\n", obx_last_error_message(), obx_last_error_code());
+        return 1;
+    }
+
+    switch (action) {
+        case ACTION_NEW:
+            rc = do_action_new(store, argc, argv);
+            break;
+        case ACTION_DONE:
+            rc = do_action_done(store, argc, argv);
+            break;
+        case ACTION_LIST_OPEN:
+            rc = do_action_list(store, true);
+            break;
+        case ACTION_LIST_DONE:
+            rc = do_action_list(store, false);
+            break;
+        default:
+            rc = 42;
+            printf("Internal error - requested action not handled\n");
+            break;
+    }
+
+    if (obx_last_error_code()) {
+        printf("Last error: %s (%d)\n", obx_last_error_message(), obx_last_error_code());
+    }
+
+    obx_store_close(store);
+
+    return rc;
+}
+
+//--------------------------------------------------------------------------------------------------------------------
+// Opening a store. The store requires a model that describes the schema of the database.
+//--------------------------------------------------------------------------------------------------------------------
+
+OBX_store* store_open() {
+    // Firstly, create our model
+    OBX_model* model = model_create();
+    if (!model) {
+        return NULL;
+    }
+
+    // As we're not doing anything fancy here, we'll just use the default options...
+    OBX_store_options* opt = obx_opt();
+
+    // ...but we need to set our model in the options for the store.
+    obx_opt_model(opt, model);
+
+    // And open the store. Note that the model is freed by obx_store_open(), even
+    // in the case of failure, so we don't need to free it here
+    return obx_store_open(opt);
+}
+
+//--------------------------------------------------------------------------------------------------------------------
+// do_action_help - print out the expected usage of the example
+//--------------------------------------------------------------------------------------------------------------------
+
+void do_action_help(char* program_path) {
+#ifndef _MSC_VER  // Windows is not UNIX
+    program_path = basename(program_path);
+#endif
+    printf("usage: %s\n", program_path);
+    const char* format = "    %-30s %s\n";
+    printf(format, "text of a new task", "create a new task with the given text");
+    printf(format, "", "(default) lists active tasks");
+    printf(format, "--done", "lists active and done tasks");
+    printf(format, "--done ID", "marks the task with the given ID as done");
+    printf(format, "--help", "displays this help");
+}
+
+//--------------------------------------------------------------------------------------------------------------------
+// do_action_new - create a new task entity and add it to the database
+//--------------------------------------------------------------------------------------------------------------------
+
+int do_action_new(OBX_store* store, int argc, char* argv[]) {
+    char* text = NULL;
+    void* buff = NULL;
+    size_t size = 0;
+    OBX_txn* txn = NULL;
+    OBX_cursor* cursor = NULL;
+
+    // grab the task text from the command line
+    if (parse_text(argc, argv, &text) <= 0) {
+        return -1;
+    }
+
+    // All access to the database is performed through a transaction. In this case, as
+    // we're adding a new entity, we need a write transaction
+    txn = obx_txn_write(store);
+    if (!txn) {
+        goto clean_up;
+    }
+
+    // Within the transaction, access to the data objects is performed through a
+    // cursor instance, which is tied to our "Task" entity objects
+    cursor = obx_cursor(txn, TASK_SCHEMA_ENTITY_ID);
+    if (!cursor) {
+        goto clean_up;
+    }
+
+    // Get an ID for our soon-to-be-created task entity
+    obx_id id = obx_cursor_id_for_put(cursor, 0);
+    if (!id) {
+        goto clean_up;
+    }
+
+    // Create a flatbuffers representation of the entity. Note that task_build pads the
+    // buffer to 4 byte aligned, as required by ObjectBox
+    if (task_build(&buff, &size, id, text, timestamp_now(), 0)) {
+        goto clean_up;
+    }
+
+    // And add it to the database. ObjectBox requires that the entities' data buffers are padded
+    // to be a whole multiple of four bytes. As task_build does not do that, we use obx_cursor_put_padded
+    // which pads the buffer if necessary. If the buffer were guaranteed to a whole multiple of 4 bytes in
+    // size, then we could use obx_cursor_put instead
+    if (obx_cursor_put_padded(cursor, id, buff, size, 0)) {
+        goto clean_up;
+    }
+
+clean_up:
+    if (!obx_last_error_code()) {
+        printf("New task: %" PRIu64 " - %s\n", id, text);
+    } else {
+        printf("Failed to create the task\n");
+    }
+
+    if (cursor) {
+        obx_cursor_close(cursor);
+    }
+
+    if (txn && !obx_last_error_code()) {
+        obx_txn_success(txn);
+    }
+
+    if (txn) {
+        obx_txn_close(txn);
+    }
+
+    free(text);
+    free(buff);
+
+    return obx_last_error_code();
+}
+
+//--------------------------------------------------------------------------------------------------------------------
+// do_action_done - mark an extant task entity as done
+//--------------------------------------------------------------------------------------------------------------------
+
+int do_action_done(OBX_store* store, int argc, char* argv[]) {
+    void* old_data = NULL;
+    size_t old_size = 0;
+    void* new_data = NULL;
+    size_t new_size = 0;
+    OBX_txn* txn = NULL;
+    OBX_cursor* cursor = NULL;
+
+    // grab the id from the command line
+    obx_id id = atol(argv[2]);
+    if (!id) {
+        printf("Error parsing ID \"%s\" as a number\n", argv[2]);
+        return -1;
+    }
+
+    txn = obx_txn_write(store);
+    if (!txn) goto clean_up;
+
+    cursor = obx_cursor(txn, TASK_SCHEMA_ENTITY_ID);
+    if (!cursor) goto clean_up;
+
+    // First, we read the entity back from the cursor
+    if (obx_cursor_get(cursor, id, &old_data, &old_size)) {
+        goto clean_up;
+    }
+
+    // grab the flat buffers representation and check to see if it's already marked done
+    Task_table_t task = Task_as_root(old_data);
+
+    if (Task_date_finished(task)) {
+        printf("Task %ld has already been done\n", (long) id);
+    } else {
+        // It's not been marked done. Rebuild the entity, marked as done, and use the cursor to overwrite it
+        printf("Setting task %ld as done\n", (long) id);
+        if (task_build(&new_data, &new_size, Task_id(task), Task_text(task), Task_date_created(task),
+                       timestamp_now())) {
+            goto clean_up;
+        }
+
+        if (obx_cursor_put_padded(cursor, id, new_data, new_size, 0)) {
+            goto clean_up;
+        }
+    }
+
+clean_up:
+    if (obx_last_error_code()) {
+        printf("Failed to mark the task as done\n");
+    }
+
+    if (cursor) {
+        obx_cursor_close(cursor);
+    }
+
+    if (txn && !obx_last_error_code()) {
+        obx_txn_success(txn);
+    }
+
+    if (txn) {
+        obx_txn_close(txn);
+    }
+
+    // old_data belongs to the database, do not free it here
+    if (new_data) free(new_data);
+
+    return obx_last_error_code();
+}
+
+//--------------------------------------------------------------------------------------------------------------------
+// do_action_list - list all the task entities, open or done, depending on list_open
+//--------------------------------------------------------------------------------------------------------------------
+
+int do_action_list(OBX_store* store, bool list_open) {
+    OBX_txn* txn = NULL;
+    OBX_cursor* cursor = NULL;
+
+    // Note that this time we are using a read transaction
+    txn = obx_txn_read(store);
+    if (!txn) goto clean_up;
+
+    cursor = obx_cursor(txn, TASK_SCHEMA_ENTITY_ID);
+    if (!cursor) goto clean_up;
+
+    // A nice header for the table
+    printf("%3s  %-19s  %-19s  %s\n", "ID", "Created", "Finished", "Text");
+
+    // grab the first entity from the cursor
+    void* data;
+    size_t size;
+    bool found = false;
+
+    int rc = obx_cursor_first(cursor, &data, &size);
+    while (!rc) {
+        Task_table_t task = Task_as_root(data);
+
+        if ((Task_date_finished(task) == 0) == list_open) {
+            found = true;
+
+            char date_created[DATE_BUFFER_LENGTH];
+            date_to_str(date_created, Task_date_created(task));
+
+            char date_finished[DATE_BUFFER_LENGTH];
+            date_to_str(date_finished, Task_date_finished(task));
+
+            printf("%3ld  %-19s  %-19s  %s\n", (long) Task_id(task), date_created, date_finished, Task_text(task));
+        }
+
+        // move the cursor to the next entity
+        rc = obx_cursor_next(cursor, &data, &size);
+    };
+
+clean_up:
+    if (rc == OBX_NOT_FOUND) {
+        if (!found) {
+            printf("There are no tasks\n");
+        }
+    } else if (rc) {
+        printf("Failed to list the tasks\n");
+    }
+
+    if (cursor) obx_cursor_close(cursor);
+    if (txn) obx_txn_close(txn);
+
+    return obx_last_error_code();
+}
+
+//--------------------------------------------------------------------------------------------------------------------
+// Utility functions
+//--------------------------------------------------------------------------------------------------------------------
+
+OBX_model* model_create() {
+    OBX_model* model = obx_model();
+    if (!model) {
+        return NULL;
+    }
+
+    obx_model_entity(model, "Task", TASK_SCHEMA_ENTITY_ID, 10001);
+    obx_model_property(model, "id", OBXPropertyType_Long, 1, 100010001);
+    obx_model_property_flags(model, OBXPropertyFlags_ID);
+    obx_model_property(model, "text", OBXPropertyType_String, 2, 100010002);
+    obx_model_property(model, "date_created", OBXPropertyType_Date, 3, 100010003);
+    obx_model_property(model, "date_finished", OBXPropertyType_Date, 4, 100010004);
+    obx_model_entity_last_property_id(model, 4, 100010004);
+    obx_model_last_entity_id(model, TASK_SCHEMA_ENTITY_ID, 10001);
+
+    if (obx_model_error_code(model)) {
+        obx_model_free(model);
+        return NULL;
+    }
+
+    return model;
+}
+
+int parse_text(int argc, char** argv, char** outText) {
+    int size = 0;
+    int i;  // Avoid "‘for’ loop initial declarations are only allowed in C99 or C11 mode" with older compilers
+
+    size += argc - 2;  // number of spaces between words
+    for (i = 1; i < argc; i++) {
+        size += (int) strlen(argv[i]);
+    }
+
+    *outText = (char*) malloc(sizeof(char) * (size + 1));
+    if (!*outText) {
+        printf("Could not process task text\n");
+        return -1;
+    }
+
+    char* p = *outText;
+    for (i = 1; i < argc; i++) {
+        strcpy(p, argv[i]);
+        p += strlen(argv[i]);
+        if (i != argc - 1) strcpy(p++, " ");
+    }
+
+    return size;
+}
+
+int task_build(void** out_buff, size_t* out_size, obx_id id, const char* text, uint64_t date_created,
+               uint64_t date_finished) {
+    flatcc_builder_t builder;
+
+    // Initialize the builder object.
+    flatcc_builder_init(&builder);
+
+    obx_err rc = Task_start_as_root(&builder);
+    if (!rc) rc = Task_id_add(&builder, id);
+    if (!rc) rc = Task_text_create(&builder, text, strlen(text));
+    if (!rc) rc = Task_date_created_add(&builder, date_created);
+    if (!rc) rc = Task_date_finished_add(&builder, date_finished);
+    if (!rc) Task_end_as_root(&builder);
+
+    if (!rc) {
+        void* buffer = flatcc_builder_get_direct_buffer(&builder, out_size);
+
+        if (!buffer) {
+            printf("%s error: (could not get direct buffer)\n", __FUNCTION__);
+            return -1;
+        }
+
+        *out_buff = malloc(*out_size);
+        if (*out_buff == NULL) {
+            printf("%s error: (could not copy direct buffer)\n", __FUNCTION__);
+            return -1;
+        }
+
+        memcpy(*out_buff, buffer, *out_size);
+    }
+
+    flatcc_builder_clear(&builder);
+    return rc;
+}
+
+uint64_t timestamp_now() { return (uint64_t)(time(NULL) * 1000); }
+
+void date_to_str(char* buff, uint64_t timestamp) {
+    if (!timestamp) {
+        // empty string
+        buff[0] = '\0';
+    } else {
+        time_t time = (time_t)(timestamp / 1000);
+        struct tm* tm_info = localtime(&time);
+        strftime(buff, DATE_BUFFER_LENGTH, DATE_FORMAT_STRING, tm_info);
+    }
+}
+
+obx_err parse_action(int argc, char* argv[]) {
     if (argc < 2) {
         return ACTION_LIST_OPEN;
     }
@@ -265,124 +475,9 @@ obx_err get_action(int argc, char* argv[]) {
         }
     }
 
-    if (strcmp("--help", argv[1]) == 0) {
+    if (strcmp("--help", argv[1]) == 0 || strcmp("--usage", argv[1]) == 0) {
         return ACTION_HELP;
     }
 
     return ACTION_NEW;
-}
-
-void usage(char* programPath) {
-#if defined(_MSC_VER)
-    printf("usage: %s \n", programPath);
-#else
-    printf("usage: %s \n", basename(programPath));
-#endif
-    const char* format = "    %-30s %s\n";
-    printf(format, "text of a new task", "create a new task with the given text");
-    printf(format, "", "(default) lists active tasks");
-    printf(format, "--done", "lists active and done tasks");
-    printf(format, "--done ID", "marks the task with the given ID as done");
-    printf(format, "--help", "displays this help");
-}
-
-int main(int argc, char* argv[]) {
-    obx_err rc = 0;
-
-    // determine requested action
-    int action = get_action(argc, argv);
-
-    if (action == ACTION_HELP) {
-        usage(argv[0]);
-        return rc;
-    }
-
-    OBX_store* store = NULL;
-    OBX_txn* txn = NULL;
-    OBX_cursor* cursor = NULL;
-
-    printf("Using libobjectbox version %s, core version: %s\n", obx_version_string(), obx_version_core_string());
-
-    const obx_schema_id task_entity_id = 1; // "Task" as used in the model
-
-    // Firstly, we need to create a model for our data and the store
-    {
-        OBX_model* model = model_create(task_entity_id);
-        if (!model) goto handle_error;
-
-        OBX_store_options* opt = obx_opt();
-        obx_opt_model(opt, model);
-        store = obx_store_open(opt);
-        if (!store) goto handle_error;
-
-        // model is freed by the obx_store_open(), we can't access it anymore
-    }
-
-    txn = obx_txn_write(store);
-    if (!txn) goto handle_error;
-
-    // get cursor to the entity data
-    cursor = obx_cursor_create(txn, task_entity_id);
-    if (!cursor) goto handle_error;
-
-    switch (action) {
-        case ACTION_NEW: {
-            char* text;
-            if (task_text(argc, argv, &text) <= 0) {
-                printf("Could not process task text\n");
-                rc = -1;
-                goto handle_error;
-            }
-
-            if ((rc = task_create(cursor, text))) goto handle_error;
-            break;
-        }
-
-        case ACTION_DONE: {
-            obx_id id = (obx_id) atol(argv[2]);
-            if (!id) {
-                printf("Error parsing ID \"%s\" as a number\n", argv[2]);
-                return -1;
-            }
-
-            if ((rc = task_done(cursor, id))) goto handle_error;
-            break;
-        }
-
-        case ACTION_LIST_OPEN:
-        case ACTION_LIST_DONE:
-            if ((rc = task_list(cursor, action == ACTION_LIST_DONE))) goto handle_error;
-            break;
-
-        default:
-            printf("Internal error - requested action not handled\n");
-            break;
-    }
-
-    if ((rc = obx_cursor_close(cursor))) goto handle_error;
-    if ((rc = obx_txn_success(txn))) goto handle_error;
-    if ((rc = obx_txn_close(txn))) goto handle_error;
-
-    if ((!obx_store_await_async_completion(store))) goto handle_error;
-    if ((rc = obx_store_close(store))) goto handle_error;
-
-    return rc;
-
-    // print error and cleanup on error
-    handle_error:
-        if (!rc) rc = -1;
-        error_print();
-
-        // cleanup anything remaining
-        if (cursor) {
-            obx_cursor_close(cursor);
-        }
-        if (txn) {
-            obx_txn_close(txn);
-        }
-        if (store) {
-            obx_store_await_async_completion(store);
-            obx_store_close(store);
-        }
-        return rc;
 }

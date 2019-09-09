@@ -1,5 +1,5 @@
 # Example: Tasks
-This example shows how to use the ObjectBox's C API to create a simple console-base task-list application.
+This example shows how to use the ObjectBox C API to create a simple console-based task-list application.
 
 To add a new task, simply enter the task text as arguments:     
 

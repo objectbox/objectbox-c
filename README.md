@@ -4,9 +4,11 @@ ObjectBox is a superfast database for objects.
 Using this C API, you can us ObjectBox as an embedded database in your C/C++ application.
 In this embedded mode, it runs within your application process.
 
+**Latest version: 0.7.0** (2019-09-09). Please note that this release comes with breaking [changes](CHANGELOG.md), see also below. 
+
 Some features
 -------------
-* Object storage based on [FlatBuffers](https://google.github.io/flatbuffers/)
+* ACID compliant object storage based on [FlatBuffers](https://google.github.io/flatbuffers/)
 * Lightweight for smart devices with less than 1 MB binary size
   (special feature reduced versions with 1/3 - 1/2 size are available on request)
 * Zero-copy reads
@@ -20,8 +22,8 @@ Some features
 Foundation for Higher Languages
 -------------------------------
 The C API also serves as a basis for ObjectBox bindings in higher languages.
-For example, the official APIs for [Go](https://github.com/objectbox/objectbox-go), [Swift](https://github.com/objectbox/objectbox-swift) and [Python](https://github.com/objectbox/objectbox-python) rely on the C API.
-In the same way, you could create a ObjectBox API for another programming language, e.g. for Dart or JavaScript.
+For example, the official APIs for [Go](https://github.com/objectbox/objectbox-go), [Swift](https://github.com/objectbox/objectbox-swift), [Dart/Flutter](https://github.com/objectbox/objectbox-dart) and [Python](https://github.com/objectbox/objectbox-python) rely on the C API.
+In the same way, you could create a ObjectBox API for another programming language, e.g. for JavaScript.
 For the C API, data consists of bytes representing FlatBuffers tables, which you can build and read in your language of choice.
 
 Usage and Installation
@@ -48,13 +50,17 @@ Examples & API Documentation
 Documentation is still on-going work.
 To get started, please have a look at the [tasks example](examples/tasks).
 
-Current state
--------------
-**Beta notice:** the C API is still new and not stable yet. Prepare for e.g. functions to be renamed.
-We at ObjectBox already use the C API for other products, so we do this, too.  
-The C API is a wrapper around the stable DB core, which is version 2.x and already used on million of devices.
+Current state / Changelog
+-------------------------
+**Beta notice:** the C API become stable starting from version 1.0.
+Until then, API improvements may result in breaking changes, for example functions may be renamed.
 
-The C API is not as convenient as the [Java/Kotlin APIs](https://docs.objectbox.io/),
+**[Changelog](CHANGELOG.md):** If you update from a previous version, please check the [changelog](CHANGELOG.md).
+Besides new features, there may be breaking changes, which might require changes to your code. 
+
+The C API is a thin wrapper around a robust DB core, which is version 2.x and already used on million of devices.
+
+**Object convenience:** The C API is currently not as convenient as the APIs for [Go](https://golang.objectbox.io/), [Swift](https://swift.objectbox.io/) or [Java/Kotlin](https://docs.objectbox.io/),
 which deeply integrate into the language using e.g. [@Entity annotations](https://docs.objectbox.io/entity-annotations).
 Instead, the C API leaves more tasks to the developer.
 For example, you have to [create a FlatBuffers schema](https://google.github.io/flatbuffers/flatbuffers_guide_writing_schema.html) and build a corresponding ObjectBox model separately.

@@ -152,7 +152,7 @@ void do_action_help(char* program_path) {
     const char* format = "    %-30s %s\n";
     printf(format, "text of a new task", "create a new task with the given text");
     printf(format, "", "(default) lists active tasks");
-    printf(format, "--done", "lists active and done tasks");
+    printf(format, "--list", "lists active and done tasks");
     printf(format, "--done ID", "marks the task with the given ID as done");
     printf(format, "--help", "displays this help");
 }
@@ -467,12 +467,15 @@ obx_err parse_action(int argc, char* argv[]) {
     }
 
     if (strcmp("--done", argv[1]) == 0) {
-        if (argc == 2) {
-            // no arguments to "done" => list done items
-            return ACTION_LIST_DONE;
+        if (argc != 3) {
+            return ACTION_HELP;
         } else {
             return ACTION_DONE;
         }
+    }
+
+    if (strcmp("--list", argv[1]) == 0) {
+        return ACTION_LIST_DONE;
     }
 
     if (strcmp("--help", argv[1]) == 0 || strcmp("--usage", argv[1]) == 0) {

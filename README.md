@@ -56,7 +56,7 @@ To get started, please have a look at the [tasks example](examples/tasks).
 For an API reference check one of those:
 
 * [include/objectbox.h](include/objectbox.h): single header file 
-* [API reference docs](https://objectbox.io/docfiles/c/): online HTML docs (Doxygen) 
+* [API reference docs](https://objectbox.io/docfiles/c/current/): online HTML docs (Doxygen) 
 
 Current state / Changelog
 -------------------------

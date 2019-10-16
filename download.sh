@@ -39,7 +39,7 @@ tty -s || quiet=true
 
 # Note: optional arguments like "--quiet" shifts argument positions in the case block above
 
-version=${1:-0.7}
+version=${1:-0.7.1}
 repoType=${2:-testing}
 os=${3:-$(uname)}
 arch=${4:-$(uname -m)}
@@ -192,10 +192,9 @@ mkdir -p "$(dirname "${archiveFile}")"
 
 # Support both curl and wget because their availability is platform dependent
 if [ -x "$(command -v curl)" ]; then
-    curl -L -o "${archiveFile}" "${downloadUrl}"
+    curl --location --fail --output "${archiveFile}" "${downloadUrl}"
 else
-    #wget too verbose with redirects, pipe and grep only errors
-    wget -O "${archiveFile}" "${downloadUrl}" 2>&1 | grep -i "HTTP request sent\|failed\|error"
+    wget --no-verbose --output-document="${archiveFile}" "${downloadUrl}"
 fi
 
 if [[ ! -s ${archiveFile} ]]; then

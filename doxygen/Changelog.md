@@ -3,6 +3,12 @@
 ObjectBox C API Changelog
 =========================
 
+0.7.1 (2019-10-16)
+------------------
+* Query performance improvements
+* Improved API docs
+* Minor fixes
+
 0.7.0 (2019-09-09)
 ------------------
 * Added observers to listen to data changes (e.g. obx_observe())

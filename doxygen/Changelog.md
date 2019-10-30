@@ -3,6 +3,11 @@
 ObjectBox C API Changelog
 =========================
 
+0.7.2 (2019-10-30)
+------------------
+* new obx_store_wrap() (use with Java version 2.4.1) 
+* Minor fixes
+
 0.7.1 (2019-10-16)
 ------------------
 * Query performance improvements

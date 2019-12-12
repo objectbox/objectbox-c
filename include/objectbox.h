@@ -38,10 +38,11 @@ extern "C" {
 // ObjectBox version codes
 //----------------------------------------------
 
-/// When using ObjectBox as a dynamic library, you should verify that a compatible version was linked using obx_version() or obx_version_is_at_least().
+/// When using ObjectBox as a dynamic library, you should verify that a compatible version was linked using
+/// obx_version() or obx_version_is_at_least().
 #define OBX_VERSION_MAJOR 0
-#define OBX_VERSION_MINOR 7
-#define OBX_VERSION_PATCH 2  // values >= 100 are reserved for dev releases leading to the next minor/major increase
+#define OBX_VERSION_MINOR 8
+#define OBX_VERSION_PATCH 0  // values >= 100 are reserved for dev releases leading to the next minor/major increase
 
 /// Returns the version of the library as ints. Pointers may be null.
 void obx_version(int* major, int* minor, int* patch);
@@ -82,6 +83,7 @@ bool obx_supports_bytes_array(void);
 #define OBX_ERROR_ILLEGAL_STATE 10001
 #define OBX_ERROR_ILLEGAL_ARGUMENT 10002
 #define OBX_ERROR_ALLOCATION 10003
+#define OBX_ERROR_OVERFLOW 10004
 #define OBX_ERROR_NO_ERROR_INFO 10097
 #define OBX_ERROR_GENERAL 10098
 #define OBX_ERROR_UNKNOWN 10099
@@ -144,8 +146,8 @@ typedef bool obx_data_visitor(void* user_data, const void* data, size_t size);
 
 /// Returns the error status on the current thread and clears the error state.
 /// The buffer returned in out_message is valid only until the next call into ObjectBox.
-/// @param out_error receives the error code; may be NULL
-/// @param out_message receives the pointer to the error messages; may be NULL
+/// @param out_error receives the error code; optional: may be NULL
+/// @param out_message receives the pointer to the error messages; optional: may be NULL
 /// @returns true if an error was pending
 bool obx_last_error_pop(obx_err* out_error, const char** out_message);
 
@@ -175,14 +177,14 @@ void obx_last_error_clear(void);
 //----------------------------------------------
 
 typedef enum {
-    OBXPropertyType_Bool = 1,   ///< 1 byte
-    OBXPropertyType_Byte = 2,   ///< 1 byte
-    OBXPropertyType_Short = 3,  ///< 2 bytes
-    OBXPropertyType_Char = 4,   ///< 1 byte
-    OBXPropertyType_Int = 5,    ///< 4 bytes
-    OBXPropertyType_Long = 6,   ///< 8 bytes
-    OBXPropertyType_Float = 7,  ///< 4 bytes
-    OBXPropertyType_Double = 8, ///< 8 bytes
+    OBXPropertyType_Bool = 1,    ///< 1 byte
+    OBXPropertyType_Byte = 2,    ///< 1 byte
+    OBXPropertyType_Short = 3,   ///< 2 bytes
+    OBXPropertyType_Char = 4,    ///< 1 byte
+    OBXPropertyType_Int = 5,     ///< 4 bytes
+    OBXPropertyType_Long = 6,    ///< 8 bytes
+    OBXPropertyType_Float = 7,   ///< 4 bytes
+    OBXPropertyType_Double = 8,  ///< 8 bytes
     OBXPropertyType_String = 9,
     OBXPropertyType_Date = 10,  ///< Unix timestamp (milliseconds since 1970) in 8 bytes
     OBXPropertyType_Relation = 11,
@@ -249,7 +251,8 @@ typedef struct OBX_model OBX_model;
 ///
 /// For manual creation, these are the basic steps:
 /// - define entity types using obx_model_entity() and obx_model_property()
-/// - Pass the last ever used IDs with obx_model_last_entity_id(), obx_model_last_index_id(), obx_model_last_relation_id()
+/// - Pass the last ever used IDs with obx_model_last_entity_id(), obx_model_last_index_id(),
+///   obx_model_last_relation_id()
 /// @returns NULL if the operation failed, see functions like obx_last_error_code() to get error details.
 ///               Note that obx_model_* functions handle OBX_model NULL pointers (will indicate an error but not crash).
 OBX_model* obx_model(void);
@@ -513,12 +516,32 @@ obx_err obx_cursor_close(OBX_cursor* cursor);
 obx_id obx_cursor_id_for_put(OBX_cursor* cursor, obx_id id_or_zero);
 
 /// ATTENTION: ensure that the given value memory is allocated to the next 4 bytes boundary.
+/// ObjectBox needs to store bytes with sizes divisible by 4 for internal reasons.
+/// Use obx_cursor_put_padded() otherwise.
+/// @param id non-zero
+obx_err obx_cursor_put_mode(OBX_cursor* cursor, obx_id id, const void* data, size_t size, OBXPutMode mode);
+
+/// ATTENTION: ensure that the given value memory is allocated to the next 4 bytes boundary.
 /// ObjectBox needs to store bytes with sizes dividable by 4 for internal reasons.
 /// Use obx_cursor_put_padded() otherwise.
 /// @param id non-zero
 obx_err obx_cursor_put(OBX_cursor* cursor, obx_id id, const void* data, size_t size, bool checkForPreviousValue);
 
-/// Prefer obx_cursor_put (non-padded) if possible, as this does a memcpy if the size is not dividable by 4.
+/// ATTENTION: ensure that the given value memory is allocated to the next 4 bytes boundary.
+/// ObjectBox needs to store bytes with sizes dividable by 4 for internal reasons.
+/// Use obx_cursor_put_padded() otherwise.
+/// @param id non-zero
+/// @returns OBX_ERROR_ID_ALREADY_EXISTS if an insert fails because of an colliding ID
+obx_err obx_cursor_insert(OBX_cursor* cursor, obx_id id, const void* data, size_t size);
+
+/// ATTENTION: ensure that the given value memory is allocated to the next 4 bytes boundary.
+/// ObjectBox needs to store bytes with sizes dividable by 4 for internal reasons.
+/// Use obx_cursor_put_padded() otherwise.
+/// @param id non-zero
+/// @returns OBX_ERROR_ID_NOT_FOUND  if an update fails because the given ID does not represent any object
+obx_err obx_cursor_update(OBX_cursor* cursor, obx_id id, const void* data, size_t size);
+
+/// Prefer obx_cursor_put (non-padded) if possible, as this does a memcpy if the size is not divisible by 4.
 obx_err obx_cursor_put_padded(OBX_cursor* cursor, obx_id id, const void* data, size_t size, bool checkForPreviousValue);
 
 obx_err obx_cursor_get(OBX_cursor* cursor, obx_id id, void** data, size_t* size);
@@ -643,11 +666,11 @@ obx_err obx_box_remove(OBX_box* box, obx_id id);
 /// Note that this method will not fail if the object is not found (e.g. already removed).
 /// In case you need to strictly check whether all of the objects exist before removing them,
 ///  execute obx_box_contains_ids() and obx_box_remove_ids() inside a single write transaction.
-/// @param out_count Pointer to retrieve the number of removed objects; may be NULL.
+/// @param out_count Pointer to retrieve the number of removed objects; optional: may be NULL.
 obx_err obx_box_remove_many(OBX_box* box, const OBX_id_array* ids, uint64_t* out_count);
 
 /// Remove all objects and set the out_count the the number of removed objects.
-/// @param out_count Pointer to retrieve the number of removed objects; may be NULL.
+/// @param out_count Pointer to retrieve the number of removed objects; optional: may be NULL.
 obx_err obx_box_remove_all(OBX_box* box, uint64_t* out_count);
 
 /// Checks whether there are any objects for this entity and updates the out_is_empty accordingly
@@ -862,12 +885,14 @@ typedef struct OBX_query OBX_query;
 OBX_query* obx_query(OBX_query_builder* builder);
 obx_err obx_query_close(OBX_query* query);
 
+/// Create a clone of the given query such that it can be run on a separate thread
+OBX_query* obx_query_clone(OBX_query* query);
+
 /// Finds entities matching the query; NOTE: the returned data is only valid as long the transaction is active!
 OBX_bytes_array* obx_query_find(OBX_query* query, uint64_t offset, uint64_t limit);
 
 /// Walks over matching objects using the given data visitor
-obx_err obx_query_visit(OBX_query* query, obx_data_visitor* visitor, void* user_data, uint64_t offset,
-                        uint64_t limit);
+obx_err obx_query_visit(OBX_query* query, obx_data_visitor* visitor, void* user_data, uint64_t offset, uint64_t limit);
 
 /// Returns IDs of all matching objects
 OBX_id_array* obx_query_find_ids(OBX_query* query, uint64_t offset, uint64_t limit);
@@ -955,25 +980,58 @@ obx_err obx_query_prop_distinct_string(OBX_query_prop* query, bool distinct, boo
 obx_err obx_query_prop_count(OBX_query_prop* query, uint64_t* out_count);
 
 /// Calculate an average value for the given numeric property across all objects matching the query
-obx_err obx_query_prop_avg(OBX_query_prop* query, double* out_average);
+/// @param query the query to run
+/// @param out_average the result of the query
+/// @param out_count (optional: may be NULL) number of entities contributing to the result
+obx_err obx_query_prop_avg(OBX_query_prop* query, double* out_average, uint64_t* out_count);
+
+/// Calculate an average value for the given numeric property across all objects matching the query
+/// @param query the query to run
+/// @param out_average the result of the query
+/// @param out_count (optional: may be NULL) number of entities contributing to the result
+/// @returns OBX_ERROR_OVERFLOW if the result does not fit into an int64_t
+obx_err obx_query_prop_avg_int(OBX_query_prop* query, int64_t* out_average, uint64_t* out_count);
 
 /// Find the minimum value of the given floating-point property across all objects matching the query
-obx_err obx_query_prop_min(OBX_query_prop* query, double* out_minimum);
+/// @param query the query to run
+/// @param out_minimum the result of the query
+/// @param out_count (optional: may be NULL) number of entities contributing to the result; in case an index is used,
+///     either 0 or 1 is returned, not the actual count of entities matching the query
+obx_err obx_query_prop_min(OBX_query_prop* query, double* out_minimum, uint64_t* out_count);
 
 /// Find the maximum value of the given floating-point property across all objects matching the query
-obx_err obx_query_prop_max(OBX_query_prop* query, double* out_maximum);
+/// @param query the query to run
+/// @param out_maximum the result of the query
+/// @param out_count (optional: may be NULL) number of entities contributing to the result; in case an index is used,
+///     either 0 or 1 is returned, not the actual count of entities matching the query
+obx_err obx_query_prop_max(OBX_query_prop* query, double* out_maximum, uint64_t* out_count);
 
 /// Calculate the sum of the given floating-point property across all objects matching the query
-obx_err obx_query_prop_sum(OBX_query_prop* query, double* out_sum);
+/// @param query the query to run
+/// @param out_sum the result of the query
+/// @param out_count (optional: may be NULL) number of entities contributing to the result
+obx_err obx_query_prop_sum(OBX_query_prop* query, double* out_sum, uint64_t* out_count);
 
 /// Find the minimum value of the given property across all objects matching the query
-obx_err obx_query_prop_min_int(OBX_query_prop* query, int64_t* out_minimum);
+/// @param query the query to run
+/// @param out_minimum the result of the query
+/// @param out_count (optional: may be NULL) number of entities contributing to the result; in case an index is used,
+///     either 0 or 1 is returned, not the actual count of entities matching the query
+obx_err obx_query_prop_min_int(OBX_query_prop* query, int64_t* out_minimum, uint64_t* out_count);
 
 /// Find the maximum value of the given property across all objects matching the query
-obx_err obx_query_prop_max_int(OBX_query_prop* query, int64_t* out_maximum);
+/// @param query the query to run
+/// @param out_maximum the result of the query
+/// @param out_count (optional: may be NULL) number of entities contributing to the result; in case an index is used,
+///     either 0 or 1 is returned, not the actual count of entities matching the query
+obx_err obx_query_prop_max_int(OBX_query_prop* query, int64_t* out_maximum, uint64_t* out_count);
 
 /// Calculate the sum of the given property across all objects matching the query
-obx_err obx_query_prop_sum_int(OBX_query_prop* query, int64_t* out_sum);
+/// @param query the query to run
+/// @param out_sum the result of the query
+/// @param out_count (optional: may be NULL) number of entities contributing to the result
+/// @returns OBX_ERROR_OVERFLOW if the result does not fit into an int64_t
+obx_err obx_query_prop_sum_int(OBX_query_prop* query, int64_t* out_sum, uint64_t* out_count);
 
 /// Returns an array of strings stored as the given property across all objects matching the query
 /// @param value_if_null value that should be used in place of NULL values on object fields;

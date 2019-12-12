@@ -4,12 +4,12 @@ ObjectBox C API
 Using this C API, you can us ObjectBox as an embedded database in your C/C++ application.
 In this embedded mode, it runs within your application process.
 
-**Latest version: 0.7.2** (2019-10-30). See [changelog](CHANGELOG.md) for more details. 
+**Latest version: 0.8.0** (2019-12-05). See [changelog](CHANGELOG.md) for more details. 
 
 Some features
 -------------
 * ACID compliant object storage based on [FlatBuffers](https://google.github.io/flatbuffers/)
-* Lightweight for smart devices with less than 1 MB binary size
+* Lightweight for smart devices; its binary size is only around 1 MB 
   (special feature reduced versions with 1/3 - 1/2 size are available on request)
 * Zero-copy reads
 * Secondary indexes based on object properties

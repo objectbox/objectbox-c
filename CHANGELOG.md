@@ -1,3 +1,11 @@
+0.8.1 (2019-12-12)
+------------------
+* Bug fix for obx_box_rel_get_ids(), which did return wrong IDs in some cases (please update!)
+* Several refinements on property queries, for example:
+  * Maintain floating point point semantics on aggregates, e.g. infinity + 1 == infinity (no overflow)
+  * Allow aggregates on Date type properties
+  * Return negative counts if results were obtained using a short cut (API change to int64_t*)
+
 0.8.0 (2019-12-05)
 ------------------
 * Property queries compute sums and averages more precisely (improved algorithms and wider types)

@@ -4,7 +4,7 @@ ObjectBox C API
 Using this C API, you can us ObjectBox as an embedded database in your C/C++ application.
 In this embedded mode, it runs within your application process.
 
-**Latest version: 0.8.0** (2019-12-05). See [changelog](CHANGELOG.md) for more details. 
+**Latest version: 0.8.1** (2019-12-12). See [changelog](CHANGELOG.md) for more details. 
 
 Some features
 -------------

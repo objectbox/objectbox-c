@@ -42,7 +42,7 @@ extern "C" {
 /// obx_version() or obx_version_is_at_least().
 #define OBX_VERSION_MAJOR 0
 #define OBX_VERSION_MINOR 8
-#define OBX_VERSION_PATCH 0  // values >= 100 are reserved for dev releases leading to the next minor/major increase
+#define OBX_VERSION_PATCH 1  // values >= 100 are reserved for dev releases leading to the next minor/major increase
 
 /// Returns the version of the library as ints. Pointers may be null.
 void obx_version(int* major, int* minor, int* patch);
@@ -83,7 +83,7 @@ bool obx_supports_bytes_array(void);
 #define OBX_ERROR_ILLEGAL_STATE 10001
 #define OBX_ERROR_ILLEGAL_ARGUMENT 10002
 #define OBX_ERROR_ALLOCATION 10003
-#define OBX_ERROR_OVERFLOW 10004
+#define OBX_ERROR_NUMERIC_OVERFLOW 10004
 #define OBX_ERROR_NO_ERROR_INFO 10097
 #define OBX_ERROR_GENERAL 10098
 #define OBX_ERROR_UNKNOWN 10099
@@ -968,107 +968,123 @@ OBX_query_prop* obx_query_prop(OBX_query* query, obx_schema_id property_id);
 
 obx_err obx_query_prop_close(OBX_query_prop* query);
 
-/// Configures the property query to work only on distinct values
+/// Configures the property query to work only on distinct values.
 /// @note not all methods support distinct, those that don't will return an error
 obx_err obx_query_prop_distinct(OBX_query_prop* query, bool distinct);
 
-/// Configures the property query to work only on distinct values
+/// Configures the property query to work only on distinct values.
+/// This version is reserved for string properties and defines the case sensitivity for distinctness.
 /// @note not all methods support distinct, those that don't will return an error
+obx_err obx_query_prop_distinct_case(OBX_query_prop* query, bool distinct, bool case_sensitive);
+
+/// Deprecated; use obx_query_prop_distinct_case() instead
 obx_err obx_query_prop_distinct_string(OBX_query_prop* query, bool distinct, bool case_sensitive);
 
 /// Count the number of non-NULL values of the given property across all objects matching the query
 obx_err obx_query_prop_count(OBX_query_prop* query, uint64_t* out_count);
 
-/// Calculate an average value for the given numeric property across all objects matching the query
+/// Calculate an average value for the given numeric property across all objects matching the query.
 /// @param query the query to run
 /// @param out_average the result of the query
-/// @param out_count (optional: may be NULL) number of entities contributing to the result
-obx_err obx_query_prop_avg(OBX_query_prop* query, double* out_average, uint64_t* out_count);
+/// @param out_count (optional, may be NULL) number of objects contributing to the result (counted on the fly).
+///                  A negative count indicates that the computation used a short cut and thus the count is incomplete.
+///                  E.g. a floating point NaN value will trigger the short cut as the average will be a NaN no matter
+///                  what values will follow.
+obx_err obx_query_prop_avg(OBX_query_prop* query, double* out_average, int64_t* out_count);
 
-/// Calculate an average value for the given numeric property across all objects matching the query
+/// Calculate an average value for the given numeric property across all objects matching the query.
 /// @param query the query to run
 /// @param out_average the result of the query
-/// @param out_count (optional: may be NULL) number of entities contributing to the result
-/// @returns OBX_ERROR_OVERFLOW if the result does not fit into an int64_t
-obx_err obx_query_prop_avg_int(OBX_query_prop* query, int64_t* out_average, uint64_t* out_count);
+/// @param out_count (optional, may be NULL) number of objects contributing to the result (counted on the fly).
+///                  A negative count indicates that the computation used a short cut and thus the count is incomplete.
+/// @returns OBX_ERROR_NUMERIC_OVERFLOW if the result does not fit into an int64_t
+obx_err obx_query_prop_avg_int(OBX_query_prop* query, int64_t* out_average, int64_t* out_count);
 
-/// Find the minimum value of the given floating-point property across all objects matching the query
+/// Find the minimum value of the given floating-point property across all objects matching the query.
 /// @param query the query to run
 /// @param out_minimum the result of the query
-/// @param out_count (optional: may be NULL) number of entities contributing to the result; in case an index is used,
-///     either 0 or 1 is returned, not the actual count of entities matching the query
-obx_err obx_query_prop_min(OBX_query_prop* query, double* out_minimum, uint64_t* out_count);
+/// @param out_count (optional, may be NULL) number of objects contributing to the result (counted on the fly).
+///                  A negative count indicates that the computation used a short cut and thus the count is incomplete.
+///                  E.g. if an index is used, it will be set to 0 or -1, instead of the actual count of objects.
+obx_err obx_query_prop_min(OBX_query_prop* query, double* out_minimum, int64_t* out_count);
 
 /// Find the maximum value of the given floating-point property across all objects matching the query
 /// @param query the query to run
 /// @param out_maximum the result of the query
-/// @param out_count (optional: may be NULL) number of entities contributing to the result; in case an index is used,
-///     either 0 or 1 is returned, not the actual count of entities matching the query
-obx_err obx_query_prop_max(OBX_query_prop* query, double* out_maximum, uint64_t* out_count);
+/// @param out_count (optional, may be NULL) number of objects contributing to the result (counted on the fly).
+///                  A negative count indicates that the computation used a short cut and thus the count is incomplete.
+///                  E.g. if an index is used, it will be set to 0 or -1, instead of the actual count of objects.
+obx_err obx_query_prop_max(OBX_query_prop* query, double* out_maximum, int64_t* out_count);
 
-/// Calculate the sum of the given floating-point property across all objects matching the query
+/// Calculate the sum of the given floating-point property across all objects matching the query.
 /// @param query the query to run
 /// @param out_sum the result of the query
-/// @param out_count (optional: may be NULL) number of entities contributing to the result
-obx_err obx_query_prop_sum(OBX_query_prop* query, double* out_sum, uint64_t* out_count);
+/// @param out_count (optional, may be NULL) number of objects contributing to the result (counted on the fly).
+///                  A negative count indicates that the computation used a short cut and thus the count is incomplete.
+///                  E.g. a floating point NaN value will trigger the short cut as the average will be a NaN no matter
+///                  what values will follow.
+obx_err obx_query_prop_sum(OBX_query_prop* query, double* out_sum, int64_t* out_count);
 
-/// Find the minimum value of the given property across all objects matching the query
+/// Find the minimum value of the given property across all objects matching the query.
 /// @param query the query to run
 /// @param out_minimum the result of the query
-/// @param out_count (optional: may be NULL) number of entities contributing to the result; in case an index is used,
-///     either 0 or 1 is returned, not the actual count of entities matching the query
-obx_err obx_query_prop_min_int(OBX_query_prop* query, int64_t* out_minimum, uint64_t* out_count);
+/// @param out_count (optional, may be NULL) number of objects contributing to the result (counted on the fly).
+///                  A negative count indicates that the computation used a short cut and thus the count is incomplete.
+///                  E.g. if an index is used, it will be set to 0 or -1, instead of the actual count of objects.
+obx_err obx_query_prop_min_int(OBX_query_prop* query, int64_t* out_minimum, int64_t* out_count);
 
-/// Find the maximum value of the given property across all objects matching the query
+/// Find the maximum value of the given property across all objects matching the query.
 /// @param query the query to run
 /// @param out_maximum the result of the query
-/// @param out_count (optional: may be NULL) number of entities contributing to the result; in case an index is used,
-///     either 0 or 1 is returned, not the actual count of entities matching the query
-obx_err obx_query_prop_max_int(OBX_query_prop* query, int64_t* out_maximum, uint64_t* out_count);
+/// @param out_count (optional, may be NULL) number of objects contributing to the result (counted on the fly).
+///                  A negative count indicates that the computation used a short cut and thus the count is incomplete.
+///                  E.g. if an index is used, it will be set to 0 or -1, instead of the actual count of objects.
+obx_err obx_query_prop_max_int(OBX_query_prop* query, int64_t* out_maximum, int64_t* out_count);
 
-/// Calculate the sum of the given property across all objects matching the query
+/// Calculate the sum of the given property across all objects matching the query.
 /// @param query the query to run
 /// @param out_sum the result of the query
-/// @param out_count (optional: may be NULL) number of entities contributing to the result
-/// @returns OBX_ERROR_OVERFLOW if the result does not fit into an int64_t
-obx_err obx_query_prop_sum_int(OBX_query_prop* query, int64_t* out_sum, uint64_t* out_count);
+/// @param out_count (optional, may be NULL) number of objects contributing to the result (counted on the fly).
+///                  A negative count indicates that the computation used a short cut and thus the count is incomplete.
+/// @returns OBX_ERROR_NUMERIC_OVERFLOW if the result does not fit into an int64_t
+obx_err obx_query_prop_sum_int(OBX_query_prop* query, int64_t* out_sum, int64_t* out_count);
 
-/// Returns an array of strings stored as the given property across all objects matching the query
+/// Returns an array of strings stored as the given property across all objects matching the query.
 /// @param value_if_null value that should be used in place of NULL values on object fields;
 ///     if value_if_null=NULL is given, objects with NULL values of the specified field are skipped
 OBX_string_array* obx_query_prop_string_find(OBX_query_prop* query, const char* value_if_null);
 
-/// Returns an array of ints stored as the given property across all objects matching the query
+/// Returns an array of ints stored as the given property across all objects matching the query.
 /// @param value_if_null value that should be used in place of NULL values on object fields;
 ///     if value_if_null=NULL is given, objects with NULL values of the specified are skipped
 /// @returns NULL if the operation failed, see functions like obx_last_error_code() to get error details
 OBX_int64_array* obx_query_prop_int64_find(OBX_query_prop* query, const int64_t* value_if_null);
 
-/// Returns an array of ints stored as the given property across all objects matching the query
+/// Returns an array of ints stored as the given property across all objects matching the query.
 /// @param value_if_null value that should be used in place of NULL values on object fields;
 ///     if value_if_null=NULL is given, objects with NULL values of the specified are skipped
 /// @returns NULL if the operation failed, see functions like obx_last_error_code() to get error details
 OBX_int32_array* obx_query_prop_int32_find(OBX_query_prop* query, const int32_t* value_if_null);
 
-/// Returns an array of ints stored as the given property across all objects matching the query
+/// Returns an array of ints stored as the given property across all objects matching the query.
 /// @param value_if_null value that should be used in place of NULL values on object fields;
 ///     if value_if_null=NULL is given, objects with NULL values of the specified are skipped
 /// @returns NULL if the operation failed, see functions like obx_last_error_code() to get error details
 OBX_int16_array* obx_query_prop_int16_find(OBX_query_prop* query, const int16_t* value_if_null);
 
-/// Returns an array of ints stored as the given property across all objects matching the query
+/// Returns an array of ints stored as the given property across all objects matching the query.
 /// @param value_if_null value that should be used in place of NULL values on object fields;
 ///     if value_if_null=NULL is given, objects with NULL values of the specified are skipped
 /// @returns NULL if the operation failed, see functions like obx_last_error_code() to get error details
 OBX_int8_array* obx_query_prop_int8_find(OBX_query_prop* query, const int8_t* value_if_null);
 
-/// Returns an array of doubles stored as the given property across all objects matching the query
+/// Returns an array of doubles stored as the given property across all objects matching the query.
 /// @param value_if_null value that should be used in place of NULL values on object fields;
 ///     if value_if_null=NULL is given, objects with NULL values of the specified are skipped
 /// @returns NULL if the operation failed, see functions like obx_last_error_code() to get error details
 OBX_double_array* obx_query_prop_double_find(OBX_query_prop* query, const double* value_if_null);
 
-/// Returns an array of int stored as the given property across all objects matching the query
+/// Returns an array of int stored as the given property across all objects matching the query.
 /// @param value_if_null value that should be used in place of NULL values on object fields;
 ///     if value_if_null=NULL is given, objects with NULL values of the specified are skipped
 /// @returns NULL if the operation failed, see functions like obx_last_error_code() to get error details

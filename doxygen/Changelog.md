@@ -3,6 +3,22 @@
 ObjectBox C API Changelog
 =========================
 
+0.8.1 (2019-12-12)
+------------------
+* Bug fix for obx_box_rel_get_ids(), which did return wrong IDs in some cases (please update!)
+* Several refinements on property queries, for example:
+  * Maintain floating point point semantics on aggregates, e.g. infinity + 1 == infinity (no overflow)
+  * Allow aggregates on Date type properties
+  * Return negative counts if results were obtained using a short cut (API change to int64_t*)
+
+0.8.0 (2019-12-05)
+------------------
+* Property queries compute sums and averages more precisely (improved algorithms and wider types)
+* Property queries now consider unsigned types
+* Added an additional out parameter for count obx_query_prop_*() 
+* Added put alternatives to "put" with cursor: obx_cursor_insert() and obx_cursor_update()
+* Added obx_query_clone() to allow clones to run in parallel on separate threads
+
 0.7.2 (2019-10-30)
 ------------------
 * new obx_store_wrap() (use with Java version 2.4.1) 

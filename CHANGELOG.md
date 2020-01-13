@@ -1,3 +1,7 @@
+0.8.2 (2020-01-13)
+------------------
+* Fix ARM build incorrectly returning TRUE in obx_supports_bytes_array()
+  
 0.8.1 (2019-12-12)
 ------------------
 * Bug fix for obx_box_rel_get_ids(), which did return wrong IDs in some cases (please update!)

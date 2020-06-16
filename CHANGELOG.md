@@ -1,6 +1,9 @@
 0.9.0 (2020-06-18)
 ------------------
-* Details are coming soon...
+* C++ API added: see include/objectbox-cpp.h
+* Initial time series support (ObjectBox TS only)
+* New "put object" functions that e.g. handle ID assignment
+* Several internal improvements, e.g. query links are resolved faster 
 
 0.8.2 (2020-01-13)
 ------------------

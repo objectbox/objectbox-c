@@ -1,10 +1,12 @@
-ObjectBox C API
-===============
+ObjectBox C/C++ API
+===================
 [ObjectBox](https://objectbox.io) is a superfast database for objects.
-Using this C API, you can us ObjectBox as an embedded database in your C/C++ application.
+These are the C and C++ APIs to run ObjectBox as an embedded database in your C/C++ application.
 In this embedded mode, it runs within your application process.
 
 **Latest version: 0.9.0** (2020-06-16). See [changelog](CHANGELOG.md) for more details. 
+
+**Related project:** [ObjectBox Generator](https://github.com/objectbox/objectbox-generator) to help with C/C++ binding code. 
 
 Some features
 -------------
@@ -47,6 +49,12 @@ Details on the download.sh script:
 * Inside the version dependent sub directory, you will find the directories "include" and "lib"
 * The "lib" directory contains the binary library
 * On systems supporting 'sudo', the download.sh script also asks you to install the library in /usr/local/lib.
+
+C++ API
+-------
+The C++ API builds on top of the C API and comes as another single header in the [include/objectbox-cpp.h](include/objectbox-cpp.h) file.
+
+For now, please also check the [ObjectBox Generator](https://github.com/objectbox/objectbox-generator) project until we extend these docs for C++.
 
 Examples & API Documentation
 ----------------------------

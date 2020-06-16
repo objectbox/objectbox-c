@@ -9,4 +9,5 @@ ENDIF()
 link_directories("${CMAKE_CURRENT_SOURCE_DIR}/lib")
 
 add_subdirectory(src-test)
+add_subdirectory(src-test-gen)
 add_subdirectory(examples)

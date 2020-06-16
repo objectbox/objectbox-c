@@ -344,17 +344,17 @@ int do_action_list(OBX_store* store, bool list_open) {
 
         // move the cursor to the next entity
         rc = obx_cursor_next(cursor, &data, &size);
-    };
+    }
 
-clean_up:
     if (rc == OBX_NOT_FOUND) {
         if (!found) {
             printf("There are no tasks\n");
         }
-    } else if (rc) {
+    } else {
         printf("Failed to list the tasks\n");
     }
 
+clean_up:
     if (cursor) obx_cursor_close(cursor);
     if (txn) obx_txn_close(txn);
 
@@ -395,6 +395,11 @@ int parse_text(int argc, char** argv, char** outText) {
     size += argc - 2;  // number of spaces between words
     for (i = 1; i < argc; i++) {
         size += (int) strlen(argv[i]);
+    }
+    assert(size >= 0);
+    if (size == 0) {
+        printf("No task text given\n");
+        return -1;
     }
 
     *outText = (char*) malloc(sizeof(char) * (size + 1));

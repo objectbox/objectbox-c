@@ -1,5 +1,5 @@
 /*
- * Copyright 2018-2019 ObjectBox Ltd. All rights reserved.
+ * Copyright 2018-2020 ObjectBox Ltd. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,8 +41,34 @@ extern "C" {
 /// When using ObjectBox as a dynamic library, you should verify that a compatible version was linked using
 /// obx_version() or obx_version_is_at_least().
 #define OBX_VERSION_MAJOR 0
-#define OBX_VERSION_MINOR 8
-#define OBX_VERSION_PATCH 2  // values >= 100 are reserved for dev releases leading to the next minor/major increase
+#define OBX_VERSION_MINOR 9
+#define OBX_VERSION_PATCH 0  // values >= 100 are reserved for dev releases leading to the next minor/major increase
+
+//----------------------------------------------
+// Common types
+//----------------------------------------------
+/// Schema entity & property identifiers
+typedef uint32_t obx_schema_id;
+
+/// Universal identifier used in schema for entities & properties
+typedef uint64_t obx_uid;
+
+/// ID of a single Object stored in the database
+typedef uint64_t obx_id;
+
+/// Error/success code returned by an obx_* function; see defines OBX_SUCCESS, OBX_NOT_FOUND, and OBX_ERROR_*
+typedef int obx_err;
+
+/// The callback for reading data one-by-one
+/// @param user_data is a pass-through argument passed to the called API
+/// @param data is the read data buffer
+/// @param size specifies the length of the read data
+/// @return true to keep going, false to cancel.
+typedef bool obx_data_visitor(void* user_data, const void* data, size_t size);
+
+//----------------------------------------------
+// Utilities
+//----------------------------------------------
 
 /// Returns the version of the library as ints. Pointers may be null.
 void obx_version(int* major, int* minor, int* patch);
@@ -58,15 +84,17 @@ const char* obx_version_string(void);
 /// The format may change, do not rely on its current form.
 const char* obx_version_core_string(void);
 
-//----------------------------------------------
-// Utilities
-//----------------------------------------------
+/// To be used for putting objects with prepared ID slots, e.g. obx_cursor_put_object().
+#define OBX_ID_NEW 0xFFFFFFFFFFFFFFFF
 
 /// delete the store files from the given directory
-int obx_remove_db_files(char const* directory);
+obx_err obx_remove_db_files(char const* directory);
 
 /// checks whether functions returning OBX_bytes_array are fully supported (depends on build, invariant during runtime)
 bool obx_supports_bytes_array(void);
+
+/// checks whether time series functions are available in the version of this library
+bool obx_supports_time_series(void);
 
 //----------------------------------------------
 // Return codes
@@ -100,6 +128,7 @@ bool obx_supports_bytes_array(void);
 #define OBX_ERROR_PROPERTY_TYPE_MISMATCH 10203
 #define OBX_ERROR_ID_ALREADY_EXISTS 10210
 #define OBX_ERROR_ID_NOT_FOUND 10211
+#define OBX_ERROR_TIME_SERIES 10212
 #define OBX_ERROR_CONSTRAINT_VIOLATED 10299
 
 // STD errors
@@ -117,28 +146,6 @@ bool obx_supports_bytes_array(void);
 
 /// A requested schema object (e.g. entity or property) was not found in the schema
 #define OBX_ERROR_SCHEMA_OBJECT_NOT_FOUND 10503
-
-//----------------------------------------------
-// Common types
-//----------------------------------------------
-/// Schema entity & property identifiers
-typedef uint32_t obx_schema_id;
-
-/// Universal identifier used in schema for entities & properties
-typedef uint64_t obx_uid;
-
-/// ID of a single Object stored in the database
-typedef uint64_t obx_id;
-
-/// Error/success code returned by an obx_* function; see defines OBX_SUCCESS, OBX_NOT_FOUND, and OBX_ERROR_*
-typedef int obx_err;
-
-/// The callback for reading data one-by-one
-/// @param user_data is a pass-through argument passed to the called API
-/// @param data is the read data buffer
-/// @param size specifies the length of the read data
-/// @return true to keep going, false to cancel.
-typedef bool obx_data_visitor(void* user_data, const void* data, size_t size);
 
 //----------------------------------------------
 // Error info; obx_last_error_*
@@ -240,6 +247,11 @@ typedef enum {
     /// Note: Don't combine with ID (IDs are always unsigned internally).
     /// Used in combination with integer types defined in OBXPropertyType_*.
     OBXPropertyFlags_UNSIGNED = 8192,
+
+    /// By defining an ID companion property, a special ID encoding scheme is activated involving this property.
+    ///
+    /// For Time Series IDs, a companion property of type Date or DateNano represents the exact timestamp.
+    OBXPropertyFlags_ID_COMPANION = 16384,
 } OBXPropertyFlags;
 
 struct OBX_model;
@@ -376,7 +388,7 @@ obx_err obx_opt_directory(OBX_store_options* opt, const char* dir);
 void obx_opt_max_db_size_in_kb(OBX_store_options* opt, size_t size_in_kb);
 
 /// Set the file mode on the options. The default is 0755 (unix-style)
-void obx_opt_file_mode(OBX_store_options* opt, int file_mode);
+void obx_opt_file_mode(OBX_store_options* opt, unsigned int file_mode);
 
 /// Set the maximum number of readers on the options.
 /// "Readers" are an finite resource for which we need to define a maximum number upfront.
@@ -387,7 +399,7 @@ void obx_opt_file_mode(OBX_store_options* opt, int file_mode);
 /// Thus, if you are working with many threads (e.g. in a server-like scenario), it can make sense to increase the
 /// maximum number of readers.
 /// Note: The internal default is currently around 120. So when hitting this limit, try values around 200-500.
-void obx_opt_max_readers(OBX_store_options* opt, int max_readers);
+void obx_opt_max_readers(OBX_store_options* opt, unsigned int max_readers);
 
 /// Set the model on the options. The default is no model.
 /// NOTE: the model is always freed by this function, including when an error occurs.
@@ -434,6 +446,7 @@ bool obx_store_await_async_submitted(OBX_store* store);
 
 obx_err obx_store_debug_flags(OBX_store* store, OBXDebugFlags flags);
 
+/// @param store may be NULL
 obx_err obx_store_close(OBX_store* store);
 
 //----------------------------------------------
@@ -508,6 +521,7 @@ OBX_cursor* obx_cursor(OBX_txn* txn, obx_schema_id entity_id);
 /// @returns NULL if the operation failed, see functions like obx_last_error_code() to get error details
 OBX_cursor* obx_cursor2(OBX_txn* txn, const char* entity_name);
 
+/// @param cursor may be NULL
 obx_err obx_cursor_close(OBX_cursor* cursor);
 
 /// Call this when putting an object to generate an ID for it.
@@ -543,6 +557,13 @@ obx_err obx_cursor_update(OBX_cursor* cursor, obx_id id, const void* data, size_
 
 /// Prefer obx_cursor_put (non-padded) if possible, as this does a memcpy if the size is not divisible by 4.
 obx_err obx_cursor_put_padded(OBX_cursor* cursor, obx_id id, const void* data, size_t size, bool checkForPreviousValue);
+
+/// FB ID slot must be present; new entities must prepare the slot using the special value OBX_ID_NEW.
+/// Alternatively, you may also pass 0 to indicate a new entity if you are aware that FlatBuffers builders typically
+/// skip zero values by default. Thus, you have to "force" writing the zero in FlatBuffers.
+/// @param data object data, non-const because the ID slot will be written (mutated) for new entites (see above)
+/// @returns id if the object could be put, or 0 in case of an error
+obx_id obx_cursor_put_object(OBX_cursor* cursor, void* data, size_t size);
 
 obx_err obx_cursor_get(OBX_cursor* cursor, obx_id id, void** data, size_t* size);
 
@@ -586,6 +607,24 @@ obx_err obx_cursor_rel_remove(OBX_cursor* cursor, obx_schema_id relation_id, obx
 
 /// @returns NULL if the operation failed, see functions like obx_last_error_code() to get error details
 OBX_id_array* obx_cursor_rel_ids(OBX_cursor* cursor, obx_schema_id relation_id, obx_id source_id);
+
+//----------------------------------------------
+// Time series
+//----------------------------------------------
+
+// TODO box based functions
+// TODO is there a better name than "limit"? Maybe something about min/max or first/last (as in C++ API)?
+//      Split in obx_cursor_ts_min() and obx_cursor_ts_max()?
+
+/// Time series: get the limits (min/max time values) over all objects
+/// @returns OBX_NOT_FOUND if no objects are stored
+obx_err obx_cursor_ts_limits(OBX_cursor* cursor, obx_id* out_begin_id, int64_t* out_begin_value, obx_id* out_end_id,
+                             int64_t* out_end_value);
+
+/// Time series: get the limits (min/max time values) over objects within the given time range
+/// @returns OBX_NOT_FOUND if no objects are stored in the given range
+obx_err obx_cursor_ts_limits_range(OBX_cursor* cursor, int64_t range_begin, int64_t range_end, obx_id* out_begin_id,
+                                   int64_t* out_begin_value, obx_id* out_end_id, int64_t* out_end_value);
 
 //----------------------------------------------
 // Box
@@ -653,6 +692,11 @@ obx_err obx_box_ids_for_put(OBX_box* box, uint64_t count, obx_id* out_first_id);
 /// ATTENTION: ensure that the given value memory is allocated to the next 4 bytes boundary.
 /// ObjectBox needs to store bytes with sizes dividable by 4 for internal reasons.
 obx_err obx_box_put(OBX_box* box, obx_id id, const void* data, size_t size, OBXPutMode mode);
+
+/// FB ID slot must be present in the given data; new entities must have a zero ID value.
+/// @param data writable data buffer, which may be updated for the ID
+/// @returns 0 on error or the entity was not put according to OBXPutMode (TODO: should we differentiate?)
+obx_id obx_box_put_object(OBX_box* box, void* data, size_t size, OBXPutMode mode);
 
 /// Put all given objects in the database in a single transaction
 /// @param ids Previously allocated IDs for the given given objects (e.g. using obx_box_ids_for_put)
@@ -798,6 +842,7 @@ typedef int obx_qb_cond;
 OBX_query_builder* obx_query_builder(OBX_store* store, obx_schema_id entity_id);
 
 /// Closes the query builder; note that OBX_query objects outlive their builder and thus are not affected by this call.
+/// @param builder may be NULL
 obx_err obx_qb_close(OBX_query_builder* builder);
 
 obx_err obx_qb_error_code(OBX_query_builder* builder);
@@ -805,6 +850,8 @@ const char* obx_qb_error_message(OBX_query_builder* builder);
 
 obx_qb_cond obx_qb_null(OBX_query_builder* builder, obx_schema_id property_id);
 obx_qb_cond obx_qb_not_null(OBX_query_builder* builder, obx_schema_id property_id);
+
+// TODO rename these methods in next minor release, move type to end, e.g. obx_qb_equal_string not obx_qb_string_equal
 
 obx_qb_cond obx_qb_string_equal(OBX_query_builder* builder, obx_schema_id property_id, const char* value,
                                 bool case_sensitive);
@@ -874,6 +921,18 @@ OBX_query_builder* obx_qb_link_standalone(OBX_query_builder* builder, obx_schema
 
 /// Create a backlink based on a standalone relation (many-to-many, reverse direction)
 OBX_query_builder* obx_qb_backlink_standalone(OBX_query_builder* builder, obx_schema_id relation_id);
+
+/// Links the (time series) entity type to another entity space using a time point or range defined in the given
+/// linked entity type and properties.
+/// Note: time series functionality must be available to use this.
+/// @param linked_entity_id Entity type that defines a time point or range
+/// @param begin_property_id Property of the linked entity defining a time point or the begin of a time range.
+///        Must be a date type (e.g. PropertyType_Date or PropertyType_DateNano).
+/// @param end_property_id Optional property of the linked entity defining the end of a time range.
+///        Pass zero to only define a time point (begin_property_id).
+///        Must be a date type (e.g. PropertyType_Date or PropertyType_DateNano).
+OBX_query_builder* obx_qb_link_time(OBX_query_builder* builder, obx_schema_id linked_entity_id,
+                                    obx_schema_id begin_property_id, obx_schema_id end_property_id);
 
 //----------------------------------------------
 // Query

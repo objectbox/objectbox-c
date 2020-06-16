@@ -3,6 +3,10 @@
 ObjectBox C API Changelog
 =========================
 
+0.9.0 (2020-06-18)
+------------------
+* Details are coming soon...
+
 0.8.2 (2020-01-13)
 ------------------
 * Fix ARM build incorrectly returning TRUE in obx_supports_bytes_array()

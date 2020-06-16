@@ -95,7 +95,7 @@ obx_err testCursorStuff(OBX_cursor* cursor) {
     void* dataRead;
     size_t sizeRead;
     if (obx_cursor_get(cursor, id, &dataRead, &sizeRead)) return printError();
-    printf("Data read from ID %ld: %s\n", (long) id, (char*) dataRead);
+    printf("%zu data bytes read from ID %ld\n", sizeRead, (long)id);
 
     obx_err rc = obx_cursor_get(cursor, id + 1, &dataRead, &sizeRead);
     if (rc != OBX_NOT_FOUND) {

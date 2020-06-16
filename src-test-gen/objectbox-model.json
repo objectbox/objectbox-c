@@ -1,0 +1,183 @@
+{
+  "_note1": "KEEP THIS FILE! Check it into a version control system (VCS) like git.",
+  "_note2": "ObjectBox manages crucial IDs for your object model. See docs for details.",
+  "_note3": "If you have VCS merge conflicts, you must resolve them according to ObjectBox docs.",
+  "entities": [
+    {
+      "id": "1:4238748172040711863",
+      "lastPropertyId": "3:8289563594193508940",
+      "name": "Bar",
+      "properties": [
+        {
+          "id": "1:8899753625016606063",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:8817565853152409613",
+          "name": "text",
+          "type": 9
+        },
+        {
+          "id": "3:8289563594193508940",
+          "name": "fooId",
+          "type": 6,
+          "flags": 8192
+        }
+      ]
+    },
+    {
+      "id": "2:3681320287511818591",
+      "lastPropertyId": "2:4580216775980296323",
+      "name": "Foo",
+      "properties": [
+        {
+          "id": "1:1727382257942252770",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:4580216775980296323",
+          "name": "text",
+          "type": 9
+        }
+      ]
+    },
+    {
+      "id": "3:1679870369785090036",
+      "lastPropertyId": "22:1844447541348929615",
+      "name": "Typeful",
+      "properties": [
+        {
+          "id": "1:2357716816519717741",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:7787106383907421892",
+          "name": "int",
+          "type": 5
+        },
+        {
+          "id": "3:6626668244087952726",
+          "name": "int8",
+          "type": 2
+        },
+        {
+          "id": "4:2311989977658529302",
+          "name": "int16",
+          "type": 3
+        },
+        {
+          "id": "5:4449626101884999513",
+          "name": "int32",
+          "type": 5
+        },
+        {
+          "id": "6:6878925028725243346",
+          "name": "int64",
+          "type": 6
+        },
+        {
+          "id": "7:6993200619804101647",
+          "name": "uint",
+          "type": 5,
+          "flags": 8192
+        },
+        {
+          "id": "8:2723131825781050497",
+          "name": "uint8",
+          "type": 2,
+          "flags": 8192
+        },
+        {
+          "id": "9:1317433661165132830",
+          "name": "uint16",
+          "type": 3,
+          "flags": 8192
+        },
+        {
+          "id": "10:408806406362957694",
+          "name": "uint32",
+          "type": 5,
+          "flags": 8192
+        },
+        {
+          "id": "11:7911223144937033489",
+          "name": "uint64",
+          "type": 6,
+          "flags": 8192
+        },
+        {
+          "id": "12:5102252532293057263",
+          "name": "bool",
+          "type": 1
+        },
+        {
+          "id": "13:1210918154342857444",
+          "name": "string",
+          "type": 9
+        },
+        {
+          "id": "14:2211039980163256942",
+          "name": "stringvector",
+          "type": 30
+        },
+        {
+          "id": "15:8283195889592016512",
+          "name": "byte",
+          "type": 2
+        },
+        {
+          "id": "16:2204379929217582908",
+          "name": "ubyte",
+          "type": 2,
+          "flags": 8192
+        },
+        {
+          "id": "17:8640208185566146332",
+          "name": "bytevector",
+          "type": 23
+        },
+        {
+          "id": "18:7744667429633222761",
+          "name": "ubytevector",
+          "type": 23
+        },
+        {
+          "id": "19:8432942845376480737",
+          "name": "float32",
+          "type": 7
+        },
+        {
+          "id": "20:8918992376217400744",
+          "name": "float64",
+          "type": 8
+        },
+        {
+          "id": "21:1569262633269218436",
+          "name": "float",
+          "type": 7
+        },
+        {
+          "id": "22:1844447541348929615",
+          "name": "double",
+          "type": 8
+        }
+      ]
+    }
+  ],
+  "lastEntityId": "3:1679870369785090036",
+  "lastIndexId": "",
+  "lastRelationId": "",
+  "modelVersion": 5,
+  "modelVersionParserMinimum": 5,
+  "retiredEntityUids": [],
+  "retiredIndexUids": [],
+  "retiredPropertyUids": [],
+  "retiredRelationUids": [],
+  "version": 1
+}

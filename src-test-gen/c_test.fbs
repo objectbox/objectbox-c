@@ -1,0 +1,36 @@
+table Foo {
+    id: ulong;
+    text: string;
+}
+
+table Bar {
+    id: ulong;
+    text: string;
+    fooId: ulong;
+}
+
+// Unused but it's here to verify there are no C compilation errors with any of the supported types.
+table Typeful {
+	id           : uint64	;
+	int          : int		;
+	int8         : int8		;
+	int16        : int16	;
+	int32        : int32	;
+	int64        : int64	;
+	uint         : uint		;
+	uint8        : uint8	;
+	uint16       : uint16	;
+	uint32       : uint32	;
+	uint64       : uint64	;
+	bool         : bool		;
+	string       : string	;
+	stringvector : [string]	;
+	byte         : byte		;
+	ubyte        : ubyte	;
+	bytevector   : [byte]	;
+	ubytevector  : [ubyte]	;
+	float32      : float32	;
+	float64      : float64	;
+	float        : float	;
+	double       : double	;
+}

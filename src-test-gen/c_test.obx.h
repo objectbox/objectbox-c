@@ -148,7 +148,7 @@ static void Bar_from_flatbuffer(const void* data, size_t size, Bar* out_object) 
     if ((offset = (vs < sizeof(vt[0]) * (1 + 3)) ? 0 : __flatbuffers_voffset_read_from_pe(vt + 1 + 2))) {
         val = (const flatbuffers_uoffset_t*)(table + offset + sizeof(flatbuffers_uoffset_t) + __flatbuffers_uoffset_read_from_pe(table + offset));
         len = (size_t) __flatbuffers_uoffset_read_from_pe(val - 1);
-        out_object->text = (char*) malloc(len * sizeof(char));
+        out_object->text = (char*) malloc((len+1) * sizeof(char));
         memcpy((void*)out_object->text, (const void*)val, len+1);
         
     } else {
@@ -236,7 +236,7 @@ static void Foo_from_flatbuffer(const void* data, size_t size, Foo* out_object) 
     if ((offset = (vs < sizeof(vt[0]) * (1 + 3)) ? 0 : __flatbuffers_voffset_read_from_pe(vt + 1 + 2))) {
         val = (const flatbuffers_uoffset_t*)(table + offset + sizeof(flatbuffers_uoffset_t) + __flatbuffers_uoffset_read_from_pe(table + offset));
         len = (size_t) __flatbuffers_uoffset_read_from_pe(val - 1);
-        out_object->text = (char*) malloc(len * sizeof(char));
+        out_object->text = (char*) malloc((len+1) * sizeof(char));
         memcpy((void*)out_object->text, (const void*)val, len+1);
         
     } else {
@@ -411,7 +411,7 @@ static void Typeful_from_flatbuffer(const void* data, size_t size, Typeful* out_
     if ((offset = (vs < sizeof(vt[0]) * (12 + 3)) ? 0 : __flatbuffers_voffset_read_from_pe(vt + 12 + 2))) {
         val = (const flatbuffers_uoffset_t*)(table + offset + sizeof(flatbuffers_uoffset_t) + __flatbuffers_uoffset_read_from_pe(table + offset));
         len = (size_t) __flatbuffers_uoffset_read_from_pe(val - 1);
-        out_object->string = (char*) malloc(len * sizeof(char));
+        out_object->string = (char*) malloc((len+1) * sizeof(char));
         memcpy((void*)out_object->string, (const void*)val, len+1);
         
     } else {

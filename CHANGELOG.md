@@ -1,3 +1,14 @@
+0.9.1 (2020-06-23)
+------------------
+* C++ interface improvements:
+  * "Box::getOptional()" overloads returning std::optional
+  * "Box::put()" overloads taking vectors of std::unique_ptr and std::optional
+  * Query methods: find(), findIds(), count(), remove(), ...
+  * Ensure double-free can't happen (added explicit copy & move constructors)
+* Fixed Windows exported symbols - recently added APIs were missing
+* New "obx_cursor_put_object4()" overload taking PutMode as an argument
+* Make *_close() functions consistently accept nullptr 
+
 0.9.0 (2020-06-18)
 ------------------
 * C++ API added: see include/objectbox-cpp.h

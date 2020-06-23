@@ -4,7 +4,7 @@ ObjectBox C/C++ API
 These are the C and C++ APIs to run ObjectBox as an embedded database in your C/C++ application.
 In this embedded mode, it runs within your application process.
 
-**Latest version: 0.9.0** (2020-06-16). See [changelog](CHANGELOG.md) for more details. 
+**Latest version: 0.9.1** (2020-06-23). See [changelog](CHANGELOG.md) for more details. 
 
 **Related project:** [ObjectBox Generator](https://github.com/objectbox/objectbox-generator) to help with C/C++ binding code. 
 

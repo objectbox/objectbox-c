@@ -42,7 +42,7 @@ extern "C" {
 /// obx_version() or obx_version_is_at_least().
 #define OBX_VERSION_MAJOR 0
 #define OBX_VERSION_MINOR 9
-#define OBX_VERSION_PATCH 0  // values >= 100 are reserved for dev releases leading to the next minor/major increase
+#define OBX_VERSION_PATCH 1  // values >= 100 are reserved for dev releases leading to the next minor/major increase
 
 //----------------------------------------------
 // Common types
@@ -480,6 +480,7 @@ obx_err obx_txn_success(OBX_txn* txn);
 /// 1) If it's an outermost TX and all (inner) TXs were marked successful, this commits the transaction.
 /// 2) If this transaction was not marked successful, this aborts the transaction (even if it's an inner TX).
 /// If an error is returned (e.g. commit failed because DB is full), you can assume that the transaction was closed.
+/// @param txn may be NULL
 obx_err obx_txn_close(OBX_txn* txn);
 
 /// Aborts the underlying transaction immediately and thus frees DB resources.
@@ -564,6 +565,9 @@ obx_err obx_cursor_put_padded(OBX_cursor* cursor, obx_id id, const void* data, s
 /// @param data object data, non-const because the ID slot will be written (mutated) for new entites (see above)
 /// @returns id if the object could be put, or 0 in case of an error
 obx_id obx_cursor_put_object(OBX_cursor* cursor, void* data, size_t size);
+
+/// @overload obx_id obx_cursor_put_object(OBX_cursor* cursor, void* data, size_t size)
+obx_id obx_cursor_put_object4(OBX_cursor* cursor, void* data, size_t size, OBXPutMode mode);
 
 obx_err obx_cursor_get(OBX_cursor* cursor, obx_id id, void** data, size_t* size);
 

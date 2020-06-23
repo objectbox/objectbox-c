@@ -3,9 +3,23 @@
 ObjectBox C API Changelog
 =========================
 
+0.9.1 (2020-06-23)
+------------------
+* C++ interface improvements:
+  * "Box::getOptional()" overloads returning std::optional
+  * "Box::put()" overloads taking vectors of std::unique_ptr and std::optional
+  * Query methods: find(), findIds(), count(), remove(), ...
+  * Ensure double-free can't happen (added explicit copy & move constructors)
+* Fixed Windows exported symbols - recently added APIs were missing
+* New "obx_cursor_put_object4()"
+* Make *_close() functions consistently accept nullptr 
+
 0.9.0 (2020-06-18)
 ------------------
-* Details are coming soon...
+* C++ API added: see include/objectbox-cpp.h
+* Initial time series support (ObjectBox TS only)
+* New "put object" functions that e.g. handle ID assignment
+* Several internal improvements, e.g. query links are resolved faster 
 
 0.8.2 (2020-01-13)
 ------------------

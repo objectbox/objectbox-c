@@ -18,6 +18,9 @@
 
 #include "flatbuffers/flatbuffers.h"
 #include "objectbox.h"
+#ifdef __cpp_lib_optional
+#include <optional>
+#endif
 
 static_assert(sizeof(obx_id) == sizeof(OBX_id_array::ids[0]),
               "Can't directly link OBX_id_array.ids to std::vector<obx_id>::data()");
@@ -58,7 +61,6 @@ class Box;
 
 class Transaction;
 
-// TODO maybe Box vending function?
 class Store {
     OBX_store* cStore_;
 
@@ -110,6 +112,11 @@ public:
 
     explicit Store(OBX_store* cStore) : cStore_(cStore) { OBJECTBOX_VERIFY_ARGUMENT(cStore != nullptr); }
 
+    /// Can't be copied, single owner of C resources is required (to avoid double-free during destruction)
+    Store(const Store&) = delete;
+
+    Store(Store&& source) noexcept : cStore_(source.cStore_) { source.cStore_ = nullptr; }
+
     virtual ~Store() { obx_store_close(cStore_); }
 
     OBX_store* cPtr() const { return cStore_; }
@@ -155,10 +162,10 @@ public:
     virtual ~Transaction() noexcept(false) { close(); };
 
     /// Delete because the default copy constructor can break things (i.e. a Transaction can not be copied).
-    Transaction(Transaction&) = delete;
+    Transaction(const Transaction&) = delete;
 
     /// Move constructor, used by Store::tx()
-    Transaction(Transaction&& tx) noexcept : cTxn_(tx.cTxn_), mode_(tx.mode_) { tx.cTxn_ = nullptr; }
+    Transaction(Transaction&& source) noexcept : cTxn_(source.cTxn_), mode_(source.mode_) { source.cTxn_ = nullptr; }
 
     /// A Transaction is active if it was not ended via success(), close() or moving.
     bool isActive() { return cTxn_ != nullptr; }
@@ -191,9 +198,9 @@ public:
     }
 };
 
-Transaction Store::tx(TxMode mode) { return Transaction(*this, mode); }
-Transaction Store::txRead() { return tx(TxMode::READ); }
-Transaction Store::txWrite() { return tx(TxMode::WRITE); }
+inline Transaction Store::tx(TxMode mode) { return Transaction(*this, mode); }
+inline Transaction Store::txRead() { return tx(TxMode::READ); }
+inline Transaction Store::txWrite() { return tx(TxMode::WRITE); }
 
 namespace {
 /// Internal cursor wrapper for convenience and RAII.
@@ -207,11 +214,17 @@ public:
         checkPtrOrThrow(cCursor_, "can't open a cursor");
     }
 
-    virtual ~CursorTx() {
-        if (cCursor_) obx_cursor_close(cCursor_);
+    /// Can't be copied, single owner of C resources is required (to avoid double-free during destruction)
+    CursorTx(const CursorTx&) = delete;
+
+    CursorTx(CursorTx&& source) noexcept : cCursor_(source.cCursor_), tx_(std::move(source.tx_)) {
+        source.cCursor_ = nullptr;
     }
 
+    virtual ~CursorTx() { obx_cursor_close(cCursor_); }
+
     void commitAndClose() {
+        OBJECTBOX_VERIFY_STATE(cCursor_ != nullptr);
         obx_cursor_close(cCursor_);
         cCursor_ = nullptr;
         tx_.success();
@@ -219,6 +232,48 @@ public:
 
     OBX_cursor* cPtr() const { return cCursor_; }
 };
+
+/// Collects all visited data
+template <typename EntityT>
+struct CollectingVisitor {
+    std::vector<std::unique_ptr<EntityT>> items;
+
+    static bool visit(void* ptr, const void* data, size_t size) {
+        auto self = reinterpret_cast<CollectingVisitor<EntityT>*>(ptr);
+        self->items.emplace_back(new EntityT());
+        EntityT::_OBX_MetaInfo::fromFlatBuffer(data, size, *(self->items.back()));
+        return true;
+    }
+};
+
+/// Produces an OBX_id_array with internal data referencing the given ids vector. You must
+/// ensure the given vector outlives the returned OBX_id_array. Additionally, you must NOT call
+/// obx_id_array_free(), because the result is not allocated by C, thus it must not free it.
+OBX_id_array cIdArrayRef(const std::vector<obx_id>& ids) {
+    return {.ids = ids.empty() ? nullptr : const_cast<obx_id*>(ids.data()), .count = ids.size()};
+}
+
+/// Consumes an OBX_id_array, producing a vector of IDs and freeing the array afterwards.
+/// Must be called right after the C-API call producing cIds in order to check and throw on error correctly.
+/// Example: idVectorOrThrow(obx_query_find_ids(cQuery_, offset_, limit_))
+/// Note: even if this function throws the given OBX_id_array is freed.
+std::vector<obx_id> idVectorOrThrow(OBX_id_array* cIds) {
+    if (!cIds) throwLastError();
+
+    try {
+        std::vector<obx_id> result;
+        if (cIds->count > 0) {
+            result.resize(cIds->count);
+            OBJECTBOX_VERIFY_STATE(result.size() == cIds->count);
+            memcpy(result.data(), cIds->ids, result.size() * sizeof(result[0]));
+        }
+        obx_id_array_free(cIds);
+        return result;
+    } catch (...) {
+        obx_id_array_free(cIds);
+        throw;
+    }
+}
 
 // FlatBuffer builder is reused so the allocated memory stays available for the future objects.
 thread_local flatbuffers::FlatBufferBuilder fbb;
@@ -236,15 +291,24 @@ template <typename EntityT>
 class QueryBuilder {
     using EntityBinding = typename EntityT::_OBX_MetaInfo;
     OBX_query_builder* cQueryBuilder_;
+    Store& store_;
 
 public:
-    explicit QueryBuilder(Store& store) : QueryBuilder(obx_query_builder(store.cPtr(), EntityBinding::entityId())) {}
+    explicit QueryBuilder(Store& store)
+        : QueryBuilder(store, obx_query_builder(store.cPtr(), EntityBinding::entityId())) {}
 
     /// Take ownership of an OBX_query_builder.
     /// @example
     ///          QueryBuilder innerQb(obx_qb_link_property(outerQb.cPtr(), linkPropertyId))
-    explicit QueryBuilder(OBX_query_builder* ptr) : cQueryBuilder_(ptr) {
+    explicit QueryBuilder(Store& store, OBX_query_builder* ptr) : store_(store), cQueryBuilder_(ptr) {
         checkPtrOrThrow(cQueryBuilder_, "can't create a query builder");
+    }
+
+    /// Can't be copied, single owner of C resources is required (to avoid double-free during destruction)
+    QueryBuilder(const QueryBuilder&) = delete;
+
+    QueryBuilder(QueryBuilder&& source) noexcept : cQueryBuilder_(source.cQueryBuilder_), store_(source.store_) {
+        source.cQueryBuilder_ = nullptr;
     }
 
     virtual ~QueryBuilder() { obx_qb_close(cQueryBuilder_); }
@@ -260,19 +324,82 @@ public:
 template <typename EntityT>
 class Query {
     OBX_query* cQuery_;
+    Store& store_;
+
+    // let's simulate what the objectbox-c API should do later - keeping offset and limit part of the query object
+    size_t offset_ = 0;
+    size_t limit_ = 0;
 
 public:
     /// Builds a query with the parameters specified by the builder
-    explicit Query(OBX_query_builder* qb) : cQuery_(obx_query(qb)) { checkPtrOrThrow(cQuery_, "can't build a query"); }
+    explicit Query(Store& store, OBX_query_builder* qb) : cQuery_(obx_query(qb)), store_(store) {
+        checkPtrOrThrow(cQuery_, "can't build a query");
+    }
+
+    /// Clones the query
+    Query(const Query& query)
+        : cQuery_(obx_query_clone(query.cQuery_)), store_(query.store_), offset_(query.offset_), limit_(query.limit_) {
+        checkPtrOrThrow(cQuery_, "couldn't make a query clone");
+    }
+
+    Query(Query&& source) noexcept : cQuery_(source.cQuery_), store_(source.store_) { source.cQuery_ = nullptr; }
 
     virtual ~Query() { obx_query_close(cQuery_); }
 
     OBX_query* cPtr() const { return cQuery_; }
+
+    /// Sets an offset of what items to start at.
+    /// This offset is stored for any further calls on the query until changed.
+    Query& offset(size_t offset) {
+        offset_ = offset;
+        return *this;
+    }
+
+    /// Sets a limit on the number of processed items.
+    /// This limit is stored for any further calls on the query until changed.
+    Query& limit(size_t limit) {
+        limit_ = limit;
+        return *this;
+    }
+
+    /// Finds all objects matching the query.
+    /// @todo returning vector of pointers isn't needed, we could just return vector of objects but we're keeping the
+    ///       interface consistent with box for now. Should be changed together though.
+    std::vector<std::unique_ptr<EntityT>> find() {
+        OBJECTBOX_VERIFY_STATE(cQuery_ != nullptr);
+
+        CollectingVisitor<EntityT> visitor;
+        obx_query_visit(cQuery_, CollectingVisitor<EntityT>::visit, &visitor, offset_, limit_);
+        return std::move(visitor.items);
+    }
+
+    /// Returns IDs of all matching objects.
+    std::vector<obx_id> findIds() { return idVectorOrThrow(obx_query_find_ids(cQuery_, offset_, limit_)); }
+
+    /// Returns the number of matching objects.
+    uint64_t count() {
+        if (offset_ || limit_) {
+            throw std::logic_error("Query limit/offset are not supported by count() at this moment");
+        }
+        uint64_t result;
+        checkErrOrThrow(obx_query_count(cQuery_, &result));
+        return result;
+    }
+
+    /// Removes all matching objects from the database & returns the number of deleted objects.
+    size_t remove() {
+        if (offset_ || limit_) {
+            throw std::logic_error("Query limit/offset are not supported by remove() at this moment");
+        }
+        uint64_t result;
+        checkErrOrThrow(obx_query_remove(cQuery_, &result));
+        return result;
+    }
 };
 
 template <typename EntityT>
-Query<EntityT> QueryBuilder<EntityT>::build() {
-    return Query<EntityT>(cQueryBuilder_);
+inline Query<EntityT> QueryBuilder<EntityT>::build() {
+    return Query<EntityT>(store_, cQueryBuilder_);
 }
 
 template <typename EntityT>
@@ -325,7 +452,7 @@ public:
     }
 
     /// Read an object from the database, returning a managed pointer.
-    /// @return an object pointer or nullptr if the object doesn't exist.
+    /// @return an object pointer or nullptr if an object with the given ID doesn't exist.
     std::unique_ptr<EntityT> get(obx_id id) {
         auto object = std::unique_ptr<EntityT>(new EntityT());
         if (!get(id, *object)) return nullptr;
@@ -345,34 +472,39 @@ public:
         return true;
     }
 
+#ifdef __cpp_lib_optional
+    /// Read an object from the database.
+    /// @return an "optional" wrapper of the object; empty if an object with the given ID doesn't exist.
+    std::optional<EntityT> getOptional(obx_id id) {
+        CursorTx cursor(TxMode::READ, store_, EntityBinding::entityId());
+        void* data;
+        size_t size;
+        obx_err err = obx_cursor_get(cursor.cPtr(), id, &data, &size);
+        if (err == OBX_NOT_FOUND) return std::nullopt;
+        checkErrOrThrow(err);
+        return EntityBinding::fromFlatBuffer(data, size);
+    }
+#endif
+
     /// Read multiple objects at once, i.e. in a single read transaction.
     /// @return a vector of object pointers index-matching the given ids. In case some objects are
     /// not found, it's position in the result will be NULL, thus the result will always have the
     /// same size as the given ids argument.
-    /// @todo do we want to provide `get(..., std::vector<EntityT>& outObjects)` or change this to return such vector?
-    ///       That would be less cumbersome to use in combination with put() calls accepting such a vector.
     std::vector<std::unique_ptr<EntityT>> get(const std::vector<obx_id>& ids) {
-        std::vector<std::unique_ptr<EntityT>> result;
-        result.resize(ids.size());  // allocate all unique_ptr with NULL contents
-
-        CursorTx cursor(TxMode::READ, store_, EntityBinding::entityId());
-        void* data;
-        size_t size;
-
-        for (size_t i = 0; i < ids.size(); i++) {
-            obx_err err = obx_cursor_get(cursor.cPtr(), ids[i], &data, &size);
-            if (err == OBX_NOT_FOUND) continue;  // leave nullptr at result[i] in this case
-            checkErrOrThrow(err);
-
-            result[i].reset(new EntityT());
-            EntityBinding::fromFlatBuffer(data, size, *(result[i]));
-        }
-
-        return result;
+        return getMany<std::unique_ptr<EntityT>>(ids);
     }
 
+#ifdef __cpp_lib_optional
+    /// Read multiple objects at once, i.e. in a single read transaction.
+    /// @return a vector of object pointers index-matching the given ids. In case some objects are
+    /// not found, it's position in the result will be empty, thus the result will always have the
+    /// same size as the given ids argument.
+    std::vector<std::optional<EntityT>> getOptional(const std::vector<obx_id>& ids) {
+        return getMany<std::optional<EntityT>>(ids);
+    }
+#endif
+
     /// Read all objects from the Box at once, i.e. in a single read transaction.
-    /// @todo do we want to provide `getAll(std::vector<EntityT>& outObjects)` or change this to return such vector?
     std::vector<std::unique_ptr<EntityT>> getAll() {
         std::vector<std::unique_ptr<EntityT>> result;
 
@@ -413,7 +545,8 @@ public:
 
     /// Puts multiple objects using a single transaction. In case there was an error the transaction is rolled back and
     /// none of the changes are persisted.
-    /// @param objects objects to insert (if their IDs are zero) or update
+    /// @param objects objects to insert (if their IDs are zero) or update. ID properties on the newly inserted objects
+    /// will be updated. If the transaction fails, the assigned IDs on the given objects will be incorrect.
     /// @param outIds may be provided to collect IDs from the objects. This collects not only new IDs assigned after an
     /// insert but also existing IDs if an object isn't new but updated instead. Thus, the outIds vector will always end
     /// up with the same number of items as objects argument, with indexes corresponding between the two. Note: outIds
@@ -421,52 +554,27 @@ public:
     /// between multiple calls.
     /// @throws reverts the changes if an error occurs.
     void put(std::vector<EntityT>& objects, std::vector<obx_id>* outIds = nullptr, OBXPutMode mode = OBXPutMode_PUT) {
-        // Even if outIds is not provided, we need a vector to store IDs to update objects AFTER the TX is committed.
-        std::unique_ptr<std::vector<obx_id>> tmpIds;
-        if (!outIds) {
-            tmpIds.reset(new std::vector<obx_id>());
-            outIds = tmpIds.get();
-        }
-
-        put(const_cast<const std::vector<EntityT>&>(objects), outIds, mode);
-
-        // Update objects after the commit. Note: there's nothing we can do if this is all executed in an outer
-        // transaction that eventually may fail, it's up to the user to handle that...
-        assert(objects.size() == outIds->size());
-        for (size_t i = 0; i < objects.size(); i++) {
-            EntityBinding::setObjectId(objects[i], outIds->at(i));
-        }
+        putMany(objects, outIds, mode);
     }
 
-    /// Puts multiple objects using a single transaction. In case there was an error the transaction is rolled back and
-    /// none of the changes are persisted.
-    /// @param objects objects to insert (if their IDs are zero) or update
-    /// @param outIds may be provided to collect IDs from the objects. This collects not only new IDs assigned after an
-    /// insert but also existing IDs if an object isn't new but updated instead. Thus, the outIds vector will always end
-    /// up with the same number of items as objects argument, with indexes corresponding between the two. Note: outIds
-    /// content is reset before executing to make sure the indexes match the objects argument even if outIds is reused
-    /// between multiple calls.
-    /// @throws reverts the changes if an error occurs.
+    /// @overload
     void put(const std::vector<EntityT>& objects, std::vector<obx_id>* outIds = nullptr,
              OBXPutMode mode = OBXPutMode_PUT) {
-        if (outIds) {
-            outIds->clear();
-            outIds->reserve(objects.size());
-        }
-
-        // Don't start a TX in case there's no data.
-        // Note: Don't move this above clearing outIds vector - our contract says that we clear outIds before starting
-        // execution so we must do it even if no objects were passed.
-        if (objects.empty()) return;
-
-        CursorTx cursor(TxMode::WRITE, store_, EntityBinding::entityId());
-        for (auto& object : objects) {
-            obx_id id = cursorPut(cursor, object, mode);
-            if (outIds) outIds->push_back(id);
-        }
-        cursor.commitAndClose();
-        fbbCleanAfterUse();  // NOTE might not get called in case of an exception
+        putMany(objects, outIds, mode);
     }
+    /// @overload
+    void put(std::vector<std::unique_ptr<EntityT>>& objects, std::vector<obx_id>* outIds = nullptr,
+             OBXPutMode mode = OBXPutMode_PUT) {
+        putMany(objects, outIds, mode);
+    }
+
+#ifdef __cpp_lib_optional
+    /// @overload
+    void put(std::vector<std::optional<EntityT>>& objects, std::vector<obx_id>* outIds = nullptr,
+             OBXPutMode mode = OBXPutMode_PUT) {
+        putMany(objects, outIds, mode);
+    }
+#endif
 
     /// Remove the object with the given id
     /// @returns whether the object was removed or not (because it didn't exist)
@@ -515,7 +623,7 @@ public:
     ///          obx_id customerId = 42;
     ///          Box<Order_> orderBox(store);
     ///          std::vector<obx_id> customerOrders = orderBox.backlinkIds(Order_.customerId, 42);
-    /// @todo hint the propertyId by using an enum class in the generated coe - drawback - needs casts in queries...
+    /// @todo hint the propertyId by using an enum class in the generated coe - drawback - needs casts in obx_qb_*()
     std::vector<obx_id> backlinkIds(obx_schema_id propertyId, obx_id objectId) {
         return idVectorOrThrow(obx_box_get_backlink_ids(cBox_, propertyId, objectId));
     }
@@ -598,43 +706,82 @@ public:
     }
 
 private:
-    obx_id cursorPut(CursorTx& cursor, const EntityT& object, OBXPutMode mode = OBXPutMode_PUT) {
+    template <typename Vector>
+    void putMany(Vector& objects, std::vector<obx_id>* outIds, OBXPutMode mode) {
+        if (outIds) {
+            outIds->clear();
+            outIds->reserve(objects.size());
+        }
+
+        // Don't start a TX in case there's no data.
+        // Note: Don't move this above clearing outIds vector - our contract says that we clear outIds before starting
+        // execution so we must do it even if no objects were passed.
+        if (objects.empty()) return;
+
+        CursorTx cursor(TxMode::WRITE, store_, EntityBinding::entityId());
+        for (auto& object : objects) {
+            obx_id id = cursorPut(cursor, object, mode);  // type-based overloads here
+            if (outIds) outIds->push_back(id);
+        }
+        cursor.commitAndClose();
+        fbbCleanAfterUse();  // NOTE might not get called in case of an exception
+    }
+
+    obx_id cursorPut(CursorTx& cursor, const EntityT& object, OBXPutMode mode) {
         EntityBinding::toFlatBuffer(fbb, object);
-        // TODO we need to extend obx_cursor_put_object() with mode argument to be able to use it (it's faster here)
-        // obx_id id = obx_cursor_put_object(cursor.cPtr(), fbb.GetBufferPointer(), fbb.GetSize());
-        obx_id id = obx_box_put_object(cBox_, fbb.GetBufferPointer(), fbb.GetSize(), mode);
+        obx_id id = obx_cursor_put_object4(cursor.cPtr(), fbb.GetBufferPointer(), fbb.GetSize(), mode);
         if (id == 0) throwLastError();
-        // NOTE: do NOT use EntityBinding::setObjectId(object, id) here - we're in a TX which may
-        // get rolled back at a later point.
         return id;
     }
 
-    /// Produces an OBX_id_array with internal data referencing the given ids vector. You must
-    /// ensure the given vector outlives the returned OBX_id_array. Additionally, you must NOT call
-    /// obx_id_array_free(), because the result is not allocated by C, thus it must not free it.
-    OBX_id_array cIdArrayRef(const std::vector<obx_id>& ids) {
-        return {.ids = ids.empty() ? nullptr : const_cast<obx_id*>(ids.data()), .count = ids.size()};
+    obx_id cursorPut(CursorTx& cursor, EntityT& object, OBXPutMode mode) {
+        obx_id id = cursorPut(cursor, const_cast<const EntityT&>(object), mode);
+        EntityBinding::setObjectId(object, id);
+        return id;
     }
 
-    /// Consumes an OBX_id_array, producing a vector of IDs and freeing the array afterwards.
-    /// Note: even if this function throws the given OBX_id_array is freed.
-    std::vector<obx_id> idVectorOrThrow(OBX_id_array* cIds) {
-        if (!cIds) throwLastError();
+    obx_id cursorPut(CursorTx& cursor, const std::unique_ptr<EntityT>& object, OBXPutMode mode) {
+        OBJECTBOX_VERIFY_ARGUMENT(object != nullptr);  // TODO or should we just skip such objects?
+        return cursorPut(cursor, *object, mode);
+    }
 
-        try {
-            std::vector<obx_id> result;
-            if (cIds->count > 0) {
-                result.resize(cIds->count);
-                OBJECTBOX_VERIFY_STATE(result.size() == cIds->count);
-                memcpy(result.data(), cIds->ids, result.size() * sizeof(result[0]));
-            }
-            obx_id_array_free(cIds);
-            return result;
-        } catch (...) {
-            obx_id_array_free(cIds);
-            throw;
+#ifdef __cpp_lib_optional
+    obx_id cursorPut(CursorTx& cursor, std::optional<EntityT>& object, OBXPutMode mode) {
+        OBJECTBOX_VERIFY_ARGUMENT(object.has_value());  // TODO or should we just skip such objects?
+        return cursorPut(cursor, *object, mode);
+    }
+#endif
+
+    template <typename Item>
+    std::vector<Item> getMany(const std::vector<obx_id>& ids) {
+        std::vector<Item> result;
+        result.resize(ids.size());  // prepare empty/nullptr pointers in the output
+
+        CursorTx cursor(TxMode::READ, store_, EntityBinding::entityId());
+        void* data;
+        size_t size;
+
+        for (size_t i = 0; i < ids.size(); i++) {
+            obx_err err = obx_cursor_get(cursor.cPtr(), ids[i], &data, &size);
+            if (err == OBX_NOT_FOUND) continue;  // leave empty at result[i] in this case
+            checkErrOrThrow(err);
+            readFromFb(result[i], data, size);
         }
+
+        return result;
     }
+
+    void readFromFb(std::unique_ptr<EntityT>& object, void* data, size_t size) {
+        object = EntityBinding::newFromFlatBuffer(data, size);
+    }
+
+#ifdef __cpp_lib_optional
+    void readFromFb(std::optional<EntityT>& object, void* data, size_t size) {
+        object = EntityT();
+        assert(object.has_value());
+        EntityBinding::fromFlatBuffer(data, size, *object);
+    }
+#endif
 };
 
 }  // namespace obx

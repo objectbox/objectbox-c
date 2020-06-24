@@ -1,12 +1,20 @@
 ObjectBox C/C++ API
 ===================
 [ObjectBox](https://objectbox.io) is a superfast database for objects.
-These are the C and C++ APIs to run ObjectBox as an embedded database in your C/C++ application.
-In this embedded mode, it runs within your application process.
+This is the **ObjectBox runtime library** to run ObjectBox as an embedded database in your C/C++ application.
 
 **Latest version: 0.9.1** (2020-06-23). See [changelog](CHANGELOG.md) for more details. 
 
-**Related project:** [ObjectBox Generator](https://github.com/objectbox/objectbox-generator) to help with C/C++ binding code. 
+In most cases you want to use the C/C++ API in combination with the **companion project [ObjectBox Generator](https://github.com/objectbox/objectbox-generator)**.
+The Generator generates boiler plate code and maintains some metadata around the data model.
+Like this, you get a convenient API which requires minimal code on your side to work with the database.
+
+Here's a code example that inserts a `Task` data object into the database: 
+
+    obx::Box<Task> box(store);
+    box.put({.text = "Buy milk"}); 
+    
+Note: `Task` is a `struct` representing a user defined data model - see [ObjectBox Generator](https://github.com/objectbox/objectbox-generator) for details.  
 
 Some features
 -------------
@@ -20,13 +28,6 @@ Some features
 * Automatic model migration (no schema upgrade scripts etc.) 
 * Powerful queries
 * Relations to other objects (1:N and M:N)
-
-Foundation for Higher Languages
--------------------------------
-The C API also serves as a basis for ObjectBox bindings in higher languages.
-For example, the official APIs for [Go](https://github.com/objectbox/objectbox-go), [Swift](https://github.com/objectbox/objectbox-swift), [Dart/Flutter](https://github.com/objectbox/objectbox-dart) and [Python](https://github.com/objectbox/objectbox-python) rely on the C API.
-In the same way, you could create a ObjectBox API for another programming language, e.g. for JavaScript.
-For the C API, data consists of bytes representing FlatBuffers tables, which you can build and read in your language of choice.
 
 Usage and Installation
 ----------------------
@@ -54,12 +55,12 @@ C++ API
 -------
 The C++ API builds on top of the C API and comes as another single header in the [include/objectbox-cpp.h](include/objectbox-cpp.h) file.
 
-For now, please also check the [ObjectBox Generator](https://github.com/objectbox/objectbox-generator) project until we extend these docs for C++.
+Please check the [ObjectBox Generator](https://github.com/objectbox/objectbox-generator) project for a sample.
 
 Examples & API Documentation
 ----------------------------
 Documentation is still on-going work.
-To get started, please have a look at the [tasks example](examples/tasks).
+For now, please refer to the [ObjectBox Generator](https://github.com/objectbox/objectbox-generator) for more details.
 
 For an API reference check one of those:
 
@@ -76,15 +77,16 @@ Until then, API improvements may result in breaking changes. For example, functi
 **[Changelog](CHANGELOG.md):** If you update from a previous version, please check the [changelog](CHANGELOG.md).
 Besides new features, there may be breaking changes requiring modifications to your code. 
 
-**Object convenience:** The C API is currently not as convenient as the APIs for [Go](https://golang.objectbox.io/), [Swift](https://swift.objectbox.io/) or [Java/Kotlin](https://docs.objectbox.io/),
-which deeply integrate into the language using e.g. [@Entity annotations](https://docs.objectbox.io/entity-annotations).
-Instead, the C API leaves more tasks to the developer.
-For example, you have to [create a FlatBuffers schema](https://google.github.io/flatbuffers/flatbuffers_guide_writing_schema.html) and build a corresponding ObjectBox model separately.
-While we might combine the two and provide more convenience in the future, the current version requires some boiler plate code.
+C API as the Foundation for Higher Languages
+--------------------------------------------
+The plain C API (without the Generator) also serves as a basis for ObjectBox bindings in higher languages.
+For example, the official APIs for [Go](https://github.com/objectbox/objectbox-go), [Swift](https://github.com/objectbox/objectbox-swift), [Dart/Flutter](https://github.com/objectbox/objectbox-dart) and [Python](https://github.com/objectbox/objectbox-python) rely on the C API.
+In the same way, you could create a ObjectBox API for another programming language, e.g. for JavaScript.
+For the C API, data consists of bytes representing FlatBuffers tables, which you can build and read in your language of choice.
 
 License
 -------
-    Copyright 2018-2019 ObjectBox Ltd. All rights reserved.
+    Copyright 2018-2020 ObjectBox Ltd. All rights reserved.
     
     Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.

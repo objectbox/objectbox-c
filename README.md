@@ -1,15 +1,14 @@
-ObjectBox C/C++ API
-===================
+ObjectBox C and C++ APIs
+========================
 [ObjectBox](https://objectbox.io) is a superfast database for objects.
-This is the **ObjectBox runtime library** to run ObjectBox as an embedded database in your C/C++ application.
+This is the **ObjectBox runtime library** to run ObjectBox as an embedded database in your C or C++ application.
 
 **Latest version: 0.9.1** (2020-06-23). See [changelog](CHANGELOG.md) for more details. 
 
-In most cases you want to use the C/C++ API in combination with the **companion project [ObjectBox Generator](https://github.com/objectbox/objectbox-generator)**.
-The Generator generates boiler plate code and maintains some metadata around the data model.
+In most cases you want to use the C and C++ APIs in combination with the **companion project [ObjectBox Generator](https://github.com/objectbox/objectbox-generator)**.
 Like this, you get a convenient API which requires minimal code on your side to work with the database.
 
-Here's a code example that inserts a `Task` data object into the database: 
+Here's a C++ code example that inserts a `Task` data object into the database: 
 
     obx::Box<Task> box(store);
     box.put({.text = "Buy milk"}); 
@@ -18,20 +17,26 @@ Note: `Task` is a `struct` representing a user defined data model - see [ObjectB
 
 Some features
 -------------
-* ACID compliant object storage based on [FlatBuffers](https://google.github.io/flatbuffers/)
+* ACID compliant object storage ("object" as in class/struct instances)
+* Direct support for [FlatBuffers](https://google.github.io/flatbuffers/) data objects (aka "flatbuffers table") 
 * Lightweight for smart devices; its binary size is only around 1 MB 
   (special feature reduced versions with 1/3 - 1/2 size are available on request)
-* Zero-copy reads
+* Zero-copy reads for highest possible performance; access tens of millions of objects on commodity hardware
 * Secondary indexes based on object properties
-* Simple get/put API
 * Async API for asynchronous puts, inserts, updates, removes
 * Automatic model migration (no schema upgrade scripts etc.) 
 * Powerful queries
 * Relations to other objects (1:N and M:N)
+* Optimized Time series types (TS edition only)
+* Data synchronization across the network (sync edition only)
 
 Usage and Installation
 ----------------------
-The C API comes as a single header in the [include/objectbox.h](include/objectbox.h) file.
+The APIs come as single header file for C and C++:
+ 
+  * C: [include/objectbox.h](include/objectbox.h)
+  * C++: [include/objectbox-cpp.h](include/objectbox-cpp.h) (depends on objectbox.h)
+  
 Compile your code against it and use the binary library (.so, .dylib, .dll depending on the platform) to link against.
   
 There are a couple of ways to get the library:
@@ -53,9 +58,11 @@ Details on the download.sh script:
 
 C++ API
 -------
-The C++ API builds on top of the C API and comes as another single header in the [include/objectbox-cpp.h](include/objectbox-cpp.h) file.
-
-Please check the [ObjectBox Generator](https://github.com/objectbox/objectbox-generator) project for a sample.
+The C++ API is built on top of the C API exposed by the library (e.g. you still need objectbox.h).
+You can also use both APIs from your code if need be.
+For example, you use the C++ `obx::Box` class for most database operations, but "break out" into the C API for a special function you need.  
+Note that to use the `obx::Box` class, you also need the [ObjectBox Generator](https://github.com/objectbox/objectbox-generator) to generate binding code.
+In short, it generates "boiler plate" source code and maintains some metadata around the data model.
 
 Examples & API Documentation
 ----------------------------

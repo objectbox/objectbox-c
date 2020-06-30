@@ -315,6 +315,55 @@ public:
 
     OBX_query_builder* cPtr() const { return cQueryBuilder_; }
 
+    /// Links the (time series) entity type to another entity space using a time point or range defined in the given
+    /// linked entity type and properties.
+    /// Note: time series functionality (ObjectBox TS) must be available to use this.
+    /// @param linkedEntityId Entity type that defines a time point or range
+    /// @param beginPropertyId Property of the linked entity defining a time point or the begin of a time range.
+    ///        Must be a date type (e.g. PropertyType_Date or PropertyType_DateNano).
+    /// @param endPropertyId Optional property of the linked entity defining the end of a time range.
+    ///        Pass zero to only define a time point (begin_property_id).
+    ///        Must be a date type (e.g. PropertyType_Date or PropertyType_DateNano).
+    template <typename ENTITY_LINKED>
+    QueryBuilder<ENTITY_LINKED> linkTime(obx_schema_id linkedEntityId, obx_schema_id beginPropertyId,
+                                         obx_schema_id endPropertyId = 0) {
+        OBX_query_builder* cQB = obx_qb_link_time(cPtr(), linkedEntityId, beginPropertyId, endPropertyId);
+        checkPtrOrThrow(cQB, "can't build a query link");
+        return QueryBuilder<ENTITY_LINKED>(store_, cQB);
+    }
+
+    /// Create a link based on a property-relation (many-to-one)
+    template <typename ENTITY_LINKED>
+    QueryBuilder<ENTITY_LINKED> linkRelationProperty(obx_schema_id relationPropertyId) {
+        OBX_query_builder* cQB = obx_qb_link_property(cPtr(), relationPropertyId);
+        checkPtrOrThrow(cQB, "can't build a query link");
+        return QueryBuilder<ENTITY_LINKED>(store_, cQB);
+    }
+
+    /// Create a backlink based on a property-relation used in reverse (one-to-many)
+    template <typename ENTITY_LINKED>
+    QueryBuilder<ENTITY_LINKED> backlinkRelationProperty(obx_schema_id sourceEntityId, obx_schema_id sourcePropertyId) {
+        OBX_query_builder* cQB = obx_qb_backlink_property(cPtr(), sourceEntityId, sourcePropertyId);
+        checkPtrOrThrow(cQB, "can't build a query link");
+        return QueryBuilder<ENTITY_LINKED>(store_, cQB);
+    }
+
+    /// Create a link based on a standalone relation (many-to-many)
+    template <typename ENTITY_LINKED>
+    QueryBuilder<ENTITY_LINKED> linkRelationStandalone(obx_schema_id relationId) {
+        OBX_query_builder* cQB = obx_qb_link_standalone(cPtr(), relationId);
+        checkPtrOrThrow(cQB, "can't build a query link");
+        return QueryBuilder<ENTITY_LINKED>(store_, cQB);
+    }
+
+    /// Create a backlink based on a standalone relation (many-to-many, reverse direction)
+    template <typename ENTITY_LINKED>
+    QueryBuilder<ENTITY_LINKED> backlinkRelationStandalone(obx_schema_id relationId) {
+        OBX_query_builder* cQB = obx_qb_backlink_standalone(cPtr(), relationId);
+        checkPtrOrThrow(cQB, "can't build a query link");
+        return QueryBuilder<ENTITY_LINKED>(store_, cQB);
+    }
+
     Query<EntityT> build();
 };
 
@@ -700,9 +749,34 @@ public:
     /// @param relationId ID of a standalone relation, whose source type matches this Box
     /// @param objectId object ID of the relation target type (typically from another Box)
     /// @returns resulting IDs representing objects in this Box
-    /// @todo improve docs by providing an example with a clear distinction between source and target type
     std::vector<obx_id> standaloneRelBacklinkIds(obx_schema_id relationId, obx_id objectId) {
         return idVectorOrThrow(obx_box_rel_get_backlink_ids(cBox_, relationId, objectId));
+    }
+
+    /// Time series: get the limits (min/max time values) over all objects
+    /// @param outMinId pointer to receive an output (may be nullptr)
+    /// @param outMinValue pointer to receive an output (may be nullptr)
+    /// @param outMaxId pointer to receive an output (may be nullptr)
+    /// @param outMaxValue pointer to receive an output (may be nullptr)
+    /// @returns true if objects were found (IDs/values are available)
+    bool timeSeriesMinMax(obx_id* outMinId, int64_t* outMinValue, obx_id* outMaxId, int64_t* outMaxValue) {
+        CursorTx cursorTx(TxMode::READ, store_, EntityBinding::entityId());
+        obx_err err = obx_cursor_ts_min_max(cursorTx.cPtr(), outMinId, outMinValue, outMaxId, outMaxValue);
+        if (err == OBX_SUCCESS) return true;
+        if (err == OBX_NOT_FOUND) return false;
+        throwLastError();
+    }
+
+    /// Time series: get the limits (min/max time values) over objects within the given time range
+    /// @returns true if objects were found in the given range (IDs/values are available)
+    bool timeSeriesMinMax(int64_t rangeBegin, int64_t rangeEnd, obx_id* outMinId, int64_t* outMinValue,
+                          obx_id* outMaxId, int64_t* outMaxValue) {
+        CursorTx cursorTx(TxMode::READ, store_, EntityBinding::entityId());
+        obx_err err = obx_cursor_ts_min_max_range(cursorTx.cPtr(), rangeBegin, rangeEnd, outMinId, outMinValue,
+                                                  outMaxId, outMaxValue);
+        if (err == OBX_SUCCESS) return true;
+        if (err == OBX_NOT_FOUND) return false;
+        throwLastError();
     }
 
 private:

@@ -3,15 +3,20 @@
 ObjectBox C API Changelog
 =========================
 
+0.9.2 (2020-06-30)
+------------------
+* Rename obx_cursor_ts_limits() to obx_cursor_ts_min_max()
+* Add C++ APIs for query links and TS min/max
+
 0.9.1 (2020-06-23)
 ------------------
 * C++ interface improvements:
-  * "Box::getOptional()" overloads returning std::optional
-  * "Box::put()" overloads taking vectors of std::unique_ptr and std::optional
+  * Box::getOptional() overloads returning std::optional
+  * Box::put() overloads taking vectors of std::unique_ptr and std::optional
   * Query methods: find(), findIds(), count(), remove(), ...
   * Ensure double-free can't happen (added explicit copy & move constructors)
 * Fixed Windows exported symbols - recently added APIs were missing
-* New "obx_cursor_put_object4()"
+* New obx_cursor_put_object4() to allow passing a PutMode
 * Make *_close() functions consistently accept nullptr 
 
 0.9.0 (2020-06-18)

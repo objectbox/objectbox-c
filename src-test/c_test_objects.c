@@ -28,7 +28,7 @@ Foo_table_t get_foo(OBX_cursor* cursor, uint64_t id) {
 int put_foo(OBX_cursor* cursor, uint64_t* idInOut, char* text) {
     flatcc_builder_t builder;
     uint64_t id = *idInOut;
-    int checkForPreviousValueFlag = id == 0 ? 0 : 1;
+    bool isNew = id == 0;
 
     id = obx_cursor_id_for_put(cursor, id);
     if (!id) { return -1; }
@@ -39,7 +39,7 @@ int put_foo(OBX_cursor* cursor, uint64_t* idInOut, char* text) {
     size_t size;
     void* buffer = flatcc_builder_get_direct_buffer(&builder, &size);
     if (!buffer) goto err;
-    rc = obx_cursor_put(cursor, id, buffer, size, checkForPreviousValueFlag);
+    rc = (isNew ? obx_cursor_put_new : obx_cursor_put)(cursor, id, buffer, size);
     if (rc) goto err;
     flatcc_builder_clear(&builder);
     *idInOut = id;
@@ -80,7 +80,7 @@ Bar_table_t get_bar(OBX_cursor* cursor, uint64_t id) {
 int put_bar(OBX_cursor* cursor, uint64_t* idInOut, char* text, uint64_t fooId) {
     flatcc_builder_t builder;
     uint64_t id = *idInOut;
-    int checkForPreviousValueFlag = id == 0 ? 0 : 1;
+    bool isNew = id == 0;
 
     id = obx_cursor_id_for_put(cursor, id);
     if (!id) return -1;
@@ -91,7 +91,7 @@ int put_bar(OBX_cursor* cursor, uint64_t* idInOut, char* text, uint64_t fooId) {
     size_t size;
     void* buffer = flatcc_builder_get_direct_buffer(&builder, &size);
     if (!buffer) goto err;
-    rc = obx_cursor_put(cursor, id, buffer, size, checkForPreviousValueFlag);
+    rc = (isNew ? obx_cursor_put_new : obx_cursor_put)(cursor, id, buffer, size);
     if (rc) goto err;
     flatcc_builder_clear(&builder);
     *idInOut = id;

@@ -10,6 +10,14 @@
 #include "flatcc/flatcc_builder.h"
 #include "objectbox.h"
 
+/// Internal function used in other generated functions to put (write) explicitly typed objects 
+static obx_id c_test_obx_h_put_object(OBX_box* box, void* object,
+                             bool (*to_flatbuffer)(flatcc_builder_t*, const void*, void**, size_t*), OBXPutMode mode);
+
+/// Internal function used in other generated functions to get (read) explicitly typed objects
+static void* c_test_obx_h_get_object(OBX_box* box, obx_id id, void* (*from_flatbuffer)(const void*, size_t));
+
+
 typedef struct Bar {
     uint64_t id;
     char* text;
@@ -24,6 +32,27 @@ enum Bar_ {
     Bar_PROP_ID_fooId = 3,
 };
 
+/// Write given object to the FlatBufferBuilder
+static bool Bar_to_flatbuffer(flatcc_builder_t* B, const Bar* object, void** out_buffer, size_t* out_size);
+
+/// Read an object from a valid FlatBuffer.
+/// If the read object contains vectors or strings, those are allocated on heap and must be freed after use by calling Bar_free_pointers().
+/// Thus, when calling this function multiple times on the same object, ensure to call Bar_free_pointers() before subsequent calls to avoid leaks. 
+/// @returns true if the object was deserialized successfully or false on (allocation) error in which case any memory 
+///          allocated by this function will also be freed before returning, allowing you to retry.
+static bool Bar_from_flatbuffer(const void* data, size_t size, Bar* out_object);
+
+/// Read an object from a valid FlatBuffer, allocating the object on heap. 
+/// The object must be freed after use by calling Bar_free();
+static Bar* Bar_new_from_flatbuffer(const void* data, size_t size);
+
+/// Free memory allocated for vector and string properties, setting the freed pointers to NULL.  
+static void Bar_free_pointers(Bar* object);
+
+/// Free Bar* object pointer and all its property pointers (vectors and strings).
+/// Equivalent to calling Bar_free_pointers() followed by free();
+static void Bar_free(Bar* object);
+
 typedef struct Foo {
     uint64_t id;
     char* text;
@@ -35,6 +64,27 @@ enum Foo_ {
     Foo_PROP_ID_id = 1,
     Foo_PROP_ID_text = 2,
 };
+
+/// Write given object to the FlatBufferBuilder
+static bool Foo_to_flatbuffer(flatcc_builder_t* B, const Foo* object, void** out_buffer, size_t* out_size);
+
+/// Read an object from a valid FlatBuffer.
+/// If the read object contains vectors or strings, those are allocated on heap and must be freed after use by calling Foo_free_pointers().
+/// Thus, when calling this function multiple times on the same object, ensure to call Foo_free_pointers() before subsequent calls to avoid leaks. 
+/// @returns true if the object was deserialized successfully or false on (allocation) error in which case any memory 
+///          allocated by this function will also be freed before returning, allowing you to retry.
+static bool Foo_from_flatbuffer(const void* data, size_t size, Foo* out_object);
+
+/// Read an object from a valid FlatBuffer, allocating the object on heap. 
+/// The object must be freed after use by calling Foo_free();
+static Foo* Foo_new_from_flatbuffer(const void* data, size_t size);
+
+/// Free memory allocated for vector and string properties, setting the freed pointers to NULL.  
+static void Foo_free_pointers(Foo* object);
+
+/// Free Foo* object pointer and all its property pointers (vectors and strings).
+/// Equivalent to calling Foo_free_pointers() followed by free();
+static void Foo_free(Foo* object);
 
 typedef struct Typeful {
     uint64_t id;
@@ -92,7 +142,26 @@ enum Typeful_ {
 };
 
 /// Write given object to the FlatBufferBuilder
-/// TODO test on a big-endian platform... especially vector creation
+static bool Typeful_to_flatbuffer(flatcc_builder_t* B, const Typeful* object, void** out_buffer, size_t* out_size);
+
+/// Read an object from a valid FlatBuffer.
+/// If the read object contains vectors or strings, those are allocated on heap and must be freed after use by calling Typeful_free_pointers().
+/// Thus, when calling this function multiple times on the same object, ensure to call Typeful_free_pointers() before subsequent calls to avoid leaks. 
+/// @returns true if the object was deserialized successfully or false on (allocation) error in which case any memory 
+///          allocated by this function will also be freed before returning, allowing you to retry.
+static bool Typeful_from_flatbuffer(const void* data, size_t size, Typeful* out_object);
+
+/// Read an object from a valid FlatBuffer, allocating the object on heap. 
+/// The object must be freed after use by calling Typeful_free();
+static Typeful* Typeful_new_from_flatbuffer(const void* data, size_t size);
+
+/// Free memory allocated for vector and string properties, setting the freed pointers to NULL.  
+static void Typeful_free_pointers(Typeful* object);
+
+/// Free Typeful* object pointer and all its property pointers (vectors and strings).
+/// Equivalent to calling Typeful_free_pointers() followed by free();
+static void Typeful_free(Typeful* object);
+
 static bool Bar_to_flatbuffer(flatcc_builder_t* B, const Bar* object, void** out_buffer, size_t* out_size) {
     assert(B);
     assert(object);
@@ -126,10 +195,7 @@ static bool Bar_to_flatbuffer(flatcc_builder_t* B, const Bar* object, void** out
     return (*out_buffer = flatcc_builder_finalize_aligned_buffer(B, out_size)) != NULL;
 }
 
-/// Read an object from a valid FlatBuffer.
-/// If the read object contains vectors or strings, those are allocated on heap and must be freed after use by calling Bar_free_pointers().
-/// If the given object already contains un-freed pointers, the memory will be lost - free manually before calling this function twice on the same object. 
-static void Bar_from_flatbuffer(const void* data, size_t size, Bar* out_object) {
+static bool Bar_from_flatbuffer(const void* data, size_t size, Bar* out_object) {
     assert(data);
     assert(out_object);
 
@@ -149,6 +215,10 @@ static void Bar_from_flatbuffer(const void* data, size_t size, Bar* out_object) 
         val = (const flatbuffers_uoffset_t*)(table + offset + sizeof(flatbuffers_uoffset_t) + __flatbuffers_uoffset_read_from_pe(table + offset));
         len = (size_t) __flatbuffers_uoffset_read_from_pe(val - 1);
         out_object->text = (char*) malloc((len+1) * sizeof(char));
+        if (out_object->text == NULL) {
+            Bar_free_pointers(out_object);
+            return false;
+        }
         memcpy((void*)out_object->text, (const void*)val, len+1);
         
     } else {
@@ -156,18 +226,22 @@ static void Bar_from_flatbuffer(const void* data, size_t size, Bar* out_object) 
     }
     
     out_object->fooId = (vs < sizeof(vt[0]) * (2 + 3)) ? 0 : flatbuffers_uint64_read_from_pe(table + __flatbuffers_voffset_read_from_pe(vt + 2 + 2));
-    
+    return true;
 }
 
-/// Read an object from a valid FlatBuffer, allocating the object on heap. 
-/// The object must be freed after use by calling Bar_free();
 static Bar* Bar_new_from_flatbuffer(const void* data, size_t size) {
     Bar* object = (Bar*) malloc(sizeof(Bar));
-    Bar_from_flatbuffer(data, size, object);
+    if (object) {
+        if (!Bar_from_flatbuffer(data, size, object)) {
+            free(object);
+            object = NULL;
+        }
+    }
     return object;
 }
 
 static void Bar_free_pointers(Bar* object) {
+    if (object == NULL) return;
     if (object->text) {
         free(object->text);
         object->text = NULL;
@@ -175,15 +249,36 @@ static void Bar_free_pointers(Bar* object) {
     
 }
 
-static void Bar_free(Bar** object) {
-    if (!object || !*object) return;
-    Bar_free_pointers(*object);
-    free(*object);
-    *object = NULL;
+static void Bar_free(Bar* object) {
+    Bar_free_pointers(object);
+    free(object);
 }
 
-/// Write given object to the FlatBufferBuilder
-/// TODO test on a big-endian platform... especially vector creation
+/// Insert or update the given object in the database.
+/// @param object (in & out) will be updated with a newly inserted ID if the one specified previously was zero. If an ID 
+/// was already specified (non-zero), it will remain unchanged.
+/// @return object ID from the object param (see object param docs) or a zero on error. If a zero was returned, you can
+/// check obx_last_error_*() to get the error details. In an unlikely event that those functions return no error
+/// code/message, the error occurred in FlatBuffers serialization, e.g. due to memory allocation issues.
+static obx_id Bar_put(OBX_box* box, Bar* object) {
+    obx_id id = c_test_obx_h_put_object(box, object,
+                               (bool (*)(flatcc_builder_t*, const void*, void**, size_t*)) Bar_to_flatbuffer,
+                               OBXPutMode_PUT);
+    if (id != 0) {
+        object->id = id;  // update the ID property on new objects for convenience
+    }
+    return id;
+}
+
+/// Read an object from the database, returning a pointer.
+/// @return an object pointer or NULL if an object with the given ID doesn't exist or any other error occurred. You can
+/// check obx_last_error_*() if NULL is returned to get the error details. In an unlikely event that those functions
+/// return no error code/message, the error occurred in FlatBuffers serialization, e.g. due to memory allocation issues.
+/// @note: The returned object must be freed after use by calling Bar_free();
+static Bar* Bar_get(OBX_box* box, obx_id id) {
+    return (Bar*) c_test_obx_h_get_object(box, id, (void* (*) (const void*, size_t)) Bar_new_from_flatbuffer);
+}
+
 static bool Foo_to_flatbuffer(flatcc_builder_t* B, const Foo* object, void** out_buffer, size_t* out_size) {
     assert(B);
     assert(object);
@@ -214,10 +309,7 @@ static bool Foo_to_flatbuffer(flatcc_builder_t* B, const Foo* object, void** out
     return (*out_buffer = flatcc_builder_finalize_aligned_buffer(B, out_size)) != NULL;
 }
 
-/// Read an object from a valid FlatBuffer.
-/// If the read object contains vectors or strings, those are allocated on heap and must be freed after use by calling Foo_free_pointers().
-/// If the given object already contains un-freed pointers, the memory will be lost - free manually before calling this function twice on the same object. 
-static void Foo_from_flatbuffer(const void* data, size_t size, Foo* out_object) {
+static bool Foo_from_flatbuffer(const void* data, size_t size, Foo* out_object) {
     assert(data);
     assert(out_object);
 
@@ -237,24 +329,32 @@ static void Foo_from_flatbuffer(const void* data, size_t size, Foo* out_object) 
         val = (const flatbuffers_uoffset_t*)(table + offset + sizeof(flatbuffers_uoffset_t) + __flatbuffers_uoffset_read_from_pe(table + offset));
         len = (size_t) __flatbuffers_uoffset_read_from_pe(val - 1);
         out_object->text = (char*) malloc((len+1) * sizeof(char));
+        if (out_object->text == NULL) {
+            Foo_free_pointers(out_object);
+            return false;
+        }
         memcpy((void*)out_object->text, (const void*)val, len+1);
         
     } else {
         out_object->text = NULL;
     }
     
-    
+    return true;
 }
 
-/// Read an object from a valid FlatBuffer, allocating the object on heap. 
-/// The object must be freed after use by calling Foo_free();
 static Foo* Foo_new_from_flatbuffer(const void* data, size_t size) {
     Foo* object = (Foo*) malloc(sizeof(Foo));
-    Foo_from_flatbuffer(data, size, object);
+    if (object) {
+        if (!Foo_from_flatbuffer(data, size, object)) {
+            free(object);
+            object = NULL;
+        }
+    }
     return object;
 }
 
 static void Foo_free_pointers(Foo* object) {
+    if (object == NULL) return;
     if (object->text) {
         free(object->text);
         object->text = NULL;
@@ -262,15 +362,36 @@ static void Foo_free_pointers(Foo* object) {
     
 }
 
-static void Foo_free(Foo** object) {
-    if (!object || !*object) return;
-    Foo_free_pointers(*object);
-    free(*object);
-    *object = NULL;
+static void Foo_free(Foo* object) {
+    Foo_free_pointers(object);
+    free(object);
 }
 
-/// Write given object to the FlatBufferBuilder
-/// TODO test on a big-endian platform... especially vector creation
+/// Insert or update the given object in the database.
+/// @param object (in & out) will be updated with a newly inserted ID if the one specified previously was zero. If an ID 
+/// was already specified (non-zero), it will remain unchanged.
+/// @return object ID from the object param (see object param docs) or a zero on error. If a zero was returned, you can
+/// check obx_last_error_*() to get the error details. In an unlikely event that those functions return no error
+/// code/message, the error occurred in FlatBuffers serialization, e.g. due to memory allocation issues.
+static obx_id Foo_put(OBX_box* box, Foo* object) {
+    obx_id id = c_test_obx_h_put_object(box, object,
+                               (bool (*)(flatcc_builder_t*, const void*, void**, size_t*)) Foo_to_flatbuffer,
+                               OBXPutMode_PUT);
+    if (id != 0) {
+        object->id = id;  // update the ID property on new objects for convenience
+    }
+    return id;
+}
+
+/// Read an object from the database, returning a pointer.
+/// @return an object pointer or NULL if an object with the given ID doesn't exist or any other error occurred. You can
+/// check obx_last_error_*() if NULL is returned to get the error details. In an unlikely event that those functions
+/// return no error code/message, the error occurred in FlatBuffers serialization, e.g. due to memory allocation issues.
+/// @note: The returned object must be freed after use by calling Foo_free();
+static Foo* Foo_get(OBX_box* box, obx_id id) {
+    return (Foo*) c_test_obx_h_get_object(box, id, (void* (*) (const void*, size_t)) Foo_new_from_flatbuffer);
+}
+
 static bool Typeful_to_flatbuffer(flatcc_builder_t* B, const Typeful* object, void** out_buffer, size_t* out_size) {
     assert(B);
     assert(object);
@@ -378,10 +499,7 @@ static bool Typeful_to_flatbuffer(flatcc_builder_t* B, const Typeful* object, vo
     return (*out_buffer = flatcc_builder_finalize_aligned_buffer(B, out_size)) != NULL;
 }
 
-/// Read an object from a valid FlatBuffer.
-/// If the read object contains vectors or strings, those are allocated on heap and must be freed after use by calling Typeful_free_pointers().
-/// If the given object already contains un-freed pointers, the memory will be lost - free manually before calling this function twice on the same object. 
-static void Typeful_from_flatbuffer(const void* data, size_t size, Typeful* out_object) {
+static bool Typeful_from_flatbuffer(const void* data, size_t size, Typeful* out_object) {
     assert(data);
     assert(out_object);
 
@@ -412,6 +530,10 @@ static void Typeful_from_flatbuffer(const void* data, size_t size, Typeful* out_
         val = (const flatbuffers_uoffset_t*)(table + offset + sizeof(flatbuffers_uoffset_t) + __flatbuffers_uoffset_read_from_pe(table + offset));
         len = (size_t) __flatbuffers_uoffset_read_from_pe(val - 1);
         out_object->string = (char*) malloc((len+1) * sizeof(char));
+        if (out_object->string == NULL) {
+            Typeful_free_pointers(out_object);
+            return false;
+        }
         memcpy((void*)out_object->string, (const void*)val, len+1);
         
     } else {
@@ -423,10 +545,19 @@ static void Typeful_from_flatbuffer(const void* data, size_t size, Typeful* out_
         val = (const flatbuffers_uoffset_t*)(table + offset + sizeof(flatbuffers_uoffset_t) + __flatbuffers_uoffset_read_from_pe(table + offset));
         len = (size_t) __flatbuffers_uoffset_read_from_pe(val - 1);
         out_object->stringvector = (char**) malloc(len * sizeof(char*));
+        if (out_object->stringvector == NULL) {
+            Typeful_free_pointers(out_object);
+            return false;
+        }
         out_object->stringvector_len = len;
         for (size_t i = 0; i < len; i++, val++) {
             const uint8_t* str = (const uint8_t*) val + (size_t)__flatbuffers_uoffset_read_from_pe(val) + sizeof(val[0]);
             out_object->stringvector[i] = (char*) malloc((strlen((const char*)str) + 1) * sizeof(char));
+            if (out_object->stringvector[i] == NULL) {
+                out_object->stringvector_len = i; // only free() indexes before the current "i"
+                Typeful_free_pointers(out_object);
+                return false;
+            }
             strcpy((char*)out_object->stringvector[i], (const char*)str);
         }
     } else {
@@ -441,6 +572,10 @@ static void Typeful_from_flatbuffer(const void* data, size_t size, Typeful* out_
         val = (const flatbuffers_uoffset_t*)(table + offset + sizeof(flatbuffers_uoffset_t) + __flatbuffers_uoffset_read_from_pe(table + offset));
         len = (size_t) __flatbuffers_uoffset_read_from_pe(val - 1);
         out_object->bytevector = (int8_t*) malloc(len * sizeof(int8_t));
+        if (out_object->bytevector == NULL) {
+            Typeful_free_pointers(out_object);
+            return false;
+        }
         out_object->bytevector_len = len;
         memcpy((void*)out_object->bytevector, (const void*)val, len);
         
@@ -454,6 +589,10 @@ static void Typeful_from_flatbuffer(const void* data, size_t size, Typeful* out_
         val = (const flatbuffers_uoffset_t*)(table + offset + sizeof(flatbuffers_uoffset_t) + __flatbuffers_uoffset_read_from_pe(table + offset));
         len = (size_t) __flatbuffers_uoffset_read_from_pe(val - 1);
         out_object->ubytevector = (uint8_t*) malloc(len * sizeof(uint8_t));
+        if (out_object->ubytevector == NULL) {
+            Typeful_free_pointers(out_object);
+            return false;
+        }
         out_object->ubytevector_len = len;
         memcpy((void*)out_object->ubytevector, (const void*)val, len);
         
@@ -466,25 +605,28 @@ static void Typeful_from_flatbuffer(const void* data, size_t size, Typeful* out_
     out_object->float64 = (vs < sizeof(vt[0]) * (19 + 3)) ? 0.0 : flatbuffers_double_read_from_pe(table + __flatbuffers_voffset_read_from_pe(vt + 19 + 2));
     out_object->float_ = (vs < sizeof(vt[0]) * (20 + 3)) ? 0.0f : flatbuffers_float_read_from_pe(table + __flatbuffers_voffset_read_from_pe(vt + 20 + 2));
     out_object->double_ = (vs < sizeof(vt[0]) * (21 + 3)) ? 0.0 : flatbuffers_double_read_from_pe(table + __flatbuffers_voffset_read_from_pe(vt + 21 + 2));
-    
+    return true;
 }
 
-/// Read an object from a valid FlatBuffer, allocating the object on heap. 
-/// The object must be freed after use by calling Typeful_free();
 static Typeful* Typeful_new_from_flatbuffer(const void* data, size_t size) {
     Typeful* object = (Typeful*) malloc(sizeof(Typeful));
-    Typeful_from_flatbuffer(data, size, object);
+    if (object) {
+        if (!Typeful_from_flatbuffer(data, size, object)) {
+            free(object);
+            object = NULL;
+        }
+    }
     return object;
 }
 
 static void Typeful_free_pointers(Typeful* object) {
+    if (object == NULL) return;
     if (object->string) {
         free(object->string);
         object->string = NULL;
     }
     
     if (object->stringvector) {
-        assert(object->stringvector_len > 0);
         for (size_t i = 0; i < object->stringvector_len; i++) {
             if (object->stringvector[i]) free(object->stringvector[i]);
         }
@@ -513,10 +655,71 @@ static void Typeful_free_pointers(Typeful* object) {
     
 }
 
-static void Typeful_free(Typeful** object) {
-    if (!object || !*object) return;
-    Typeful_free_pointers(*object);
-    free(*object);
-    *object = NULL;
+static void Typeful_free(Typeful* object) {
+    Typeful_free_pointers(object);
+    free(object);
 }
 
+/// Insert or update the given object in the database.
+/// @param object (in & out) will be updated with a newly inserted ID if the one specified previously was zero. If an ID 
+/// was already specified (non-zero), it will remain unchanged.
+/// @return object ID from the object param (see object param docs) or a zero on error. If a zero was returned, you can
+/// check obx_last_error_*() to get the error details. In an unlikely event that those functions return no error
+/// code/message, the error occurred in FlatBuffers serialization, e.g. due to memory allocation issues.
+static obx_id Typeful_put(OBX_box* box, Typeful* object) {
+    obx_id id = c_test_obx_h_put_object(box, object,
+                               (bool (*)(flatcc_builder_t*, const void*, void**, size_t*)) Typeful_to_flatbuffer,
+                               OBXPutMode_PUT);
+    if (id != 0) {
+        object->id = id;  // update the ID property on new objects for convenience
+    }
+    return id;
+}
+
+/// Read an object from the database, returning a pointer.
+/// @return an object pointer or NULL if an object with the given ID doesn't exist or any other error occurred. You can
+/// check obx_last_error_*() if NULL is returned to get the error details. In an unlikely event that those functions
+/// return no error code/message, the error occurred in FlatBuffers serialization, e.g. due to memory allocation issues.
+/// @note: The returned object must be freed after use by calling Typeful_free();
+static Typeful* Typeful_get(OBX_box* box, obx_id id) {
+    return (Typeful*) c_test_obx_h_get_object(box, id, (void* (*) (const void*, size_t)) Typeful_new_from_flatbuffer);
+}
+
+static obx_id c_test_obx_h_put_object(OBX_box* box, void* object,
+                             bool (*to_flatbuffer)(flatcc_builder_t*, const void*, void**, size_t*), OBXPutMode mode) {
+    flatcc_builder_t builder;
+    flatcc_builder_init(&builder);
+
+    obx_id id = 0;
+    size_t size = 0;
+    void* buffer = NULL;
+    if (!to_flatbuffer(&builder, object, &buffer, &size)) {
+        obx_last_error_set(OBX_ERROR_STD_OTHER, 0, "FlatBuffer serialization failed");
+    } else {
+        id = obx_box_put_object4(box, buffer, size, mode);  // 0 on error
+    }
+
+    flatcc_builder_clear(&builder);
+    if (buffer) flatcc_builder_aligned_free(buffer);
+
+    return id;
+}
+
+static void* c_test_obx_h_get_object(OBX_box* box, obx_id id, void* (*from_flatbuffer)(const void*, size_t)) {
+    // We need an explicit TX - read data lifecycle is bound to the open TX.
+    OBX_txn* tx = obx_txn_read(obx_box_store(box));
+    if (!tx) return NULL;
+
+    void* result = NULL;
+    void* data;
+    size_t size;
+    if (obx_box_get(box, id, &data, &size) == OBX_SUCCESS) {
+        result = from_flatbuffer(data, size);
+        if (result == NULL) {
+            obx_last_error_set(OBX_ERROR_STD_OTHER, 0, "FlatBuffer deserialization failed");
+        }
+    }
+
+    obx_txn_close(tx);
+    return result;
+}

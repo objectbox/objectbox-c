@@ -1,5 +1,5 @@
 /*
- * Copyright 2018-2019 ObjectBox Ltd. All rights reserved.
+ * Copyright 2018-2020 ObjectBox Ltd. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -199,11 +199,7 @@ int do_action_new(OBX_store* store, int argc, char* argv[]) {
         goto clean_up;
     }
 
-    // And add it to the database. ObjectBox requires that the entities' data buffers are padded
-    // to be a whole multiple of four bytes. As task_build does not do that, we use obx_cursor_put_padded
-    // which pads the buffer if necessary. If the buffer were guaranteed to a whole multiple of 4 bytes in
-    // size, then we could use obx_cursor_put instead
-    if (obx_cursor_put_padded(cursor, id, buff, size, 0)) {
+    if (obx_cursor_put_new(cursor, id, buff, size)) {
         goto clean_up;
     }
 
@@ -275,7 +271,7 @@ int do_action_done(OBX_store* store, int argc, char* argv[]) {
             goto clean_up;
         }
 
-        if (obx_cursor_put_padded(cursor, id, new_data, new_size, 0)) {
+        if (obx_cursor_put(cursor, id, new_data, new_size)) {
             goto clean_up;
         }
     }

@@ -1,0 +1,10 @@
+table Task {
+    id: ulong;
+    text: string;
+
+    /// objectbox:date
+    date_created: ulong;
+
+    /// objectbox:date
+    date_finished: ulong;
+}

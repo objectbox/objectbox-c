@@ -1,7 +1,73 @@
 [TOC]
 
-ObjectBox C API Changelog
-=========================
+ObjectBox C and C++ API Changelog
+=================================
+
+0.10.0 (2020-08-13)
+------------------
+C++ API queries and model classes for more feature-rich generated code.
+C-API cleanup & docs updates, including the following changes (some of them breaking due to renames):
+
+##### Misc
+* new property type: DateNano for datetime with nanosecond precision
+* new store options obx_opt_*()
+  * validate_on_open - to validate the database during openining
+  * put_padding_mode - configure the padding used by your flatbuffers implementation
+  * use_previous_commit - roll-back the database to the previously committed version
+  * read_only - open the database in the read only mode
+  * debug_flags - configure debug logging
+
+##### Cursor
+* remove obx_cursor2(), use obx_cursor() in combination with obx_store_entity_id()
+* rename obx_cursor_put_mode() to obx_cursor_put4()
+* obx_cursor_put() drops the last parameter `checkForPreviousValue` and introduced a complementary obx_cursor_put_new()
+* remove obx_cursor_put_padded()
+* rename obx_cursor_backlink_bytes() to obx_cursor_backlinks()
+* rename obx_cursor_ts_limits() to obx_cursor_ts_min_max()
+* rename obx_cursor_ts_limits_range() to obx_cursor_ts_min_max_range()
+  
+##### Box  
+* rename obx_box_put() to obx_box_put5()
+* rename obx_box_put_object() to obx_box_put_object4()
+* change obx_box_put_many to fail when any of the individual inserts/updates fails and new obx_box_put_many5() to override this behavior
+* new obx_box_store() to get access to OBX_store* owning the given box
+* new obx_box_insert() obx_box_update() for for insert and update semantics, same as put mode arg in obx_box_put5()
+* new obx_box_put() without a mode argument (defaults to PUT) 
+* new obx_box_put_object() without a mode argument (defaults to PUT) 
+* new obx_box_ts_min_max() for time-series databases
+* new obx_box_ts_min_max_range() for time-series databases
+
+##### Async
+* rename obx_async_put_mode() to obx_async_put5()
+* rename obx_async_id_put() to obx_async_put_object()
+* rename obx_async_id_insert() to obx_async_insert_object()
+
+##### Query builder
+* obx_qb_{type}_{operation}() function naming changes to obx_qb_{operation}_{type}(), e.g. obx_qb_int_equal() becomes obx_qb_equals_int()
+* obx_qb_{operation}_{type}() functions taking multiple arguments have an "s" at the end, indicating plural, e.g. obx_qb_in_int64s()
+* operation `equal` becomes `equals`, `greater` becomes `greater_than`, `less` becomes `less_than` 
+* obx_qb_greater_than_string() drops `with_equal` argument in favor of the new obx_qb_greater_or_equal_string() function
+* obx_qb_less_than_string() drops `with_equal` argument in favor of the new obx_qb_less_or_equal_string() function
+* change obx_qb_in_strings() argument `const char* values[]` changes to `const char* const values[]`, 
+  i.e. const array of const char pointers
+* obx_qb_greater_than_bytes() drops `with_equal` argument in favor of the new obx_qb_greater_or_equal_bytes() function
+* obx_qb_less_than_bytes() drops `with_equal` argument in favor of the new obx_qb_less_or_equal_bytes() function
+
+##### Query
+Limit and offset are now part of the query state instead of function arguments, therefore:
+* new obx_query_offset() and obx_query_limit() set persistent offset/limit for all future calls to other query functions
+* obx_query_find(), obx_query_visit(), obx_query_find_ids(), as well as the cursor alternatives, 
+  all drop `offset` and `limit` arguments
+* note: some query functions, such as count/remove don't support non-zero offset/limit yet.
+* obx_query_{type}_param() function naming changes to obx_query_param_{type}(), e.g. obx_query_string_param() 
+  becomes obx_query_param_string() or obx_query_param_strings() for the plural variant 
+* obx_query_{type}_param_alias() function naming changes to obx_query_param_alias_{type}(), e.g. obx_query_string_param_alias() 
+  becomes obx_query_param_alias_string()
+* obx_query_param_strings() and obx_query_param_alias_strings() argument `const char* values[]`  
+  changes to `const char* const values[]`, i.e. const array of const char pointers
+* obx_query_prop_{type}_find() function naming changes to obx_query_prop_find_{type}s(), with an "s" indicating the return 
+  type is plural, e.g. obx_query_prop_find_strings
+* remove deprecated obx_query_prop_distinct_string()
 
 0.9.2 (2020-06-30)
 ------------------

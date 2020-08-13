@@ -85,7 +85,7 @@ obx_err testCursorStuff(OBX_cursor* cursor) {
         return 1;
     }
 
-    if (obx_cursor_put(cursor, id, buffer, size, 0)) {
+    if (obx_cursor_put_new(cursor, id, buffer, size)) {
         flatcc_builder_clear(&builder);
         return printError();
     } else {

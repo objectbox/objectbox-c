@@ -15,7 +15,7 @@ int put_foo(OBX_cursor* cursor, uint64_t* idInOut, char* text) {
     flatcc_builder_init(&builder);
 
     uint64_t id = *idInOut;
-    int checkForPreviousValueFlag = id == 0 ? 0 : 1;
+    bool isNew = id == 0;
 
     id = obx_cursor_id_for_put(cursor, id);
     if (!id) { return -1; }
@@ -27,7 +27,7 @@ int put_foo(OBX_cursor* cursor, uint64_t* idInOut, char* text) {
     Foo foo = {.id = id, .text = text};
     if (!Foo_to_flatbuffer(&builder, &foo, &buffer, &size)) goto err;
 
-    rc = obx_cursor_put(cursor, id, buffer, size, checkForPreviousValueFlag);
+    rc = (isNew ? obx_cursor_put_new : obx_cursor_put)(cursor, id, buffer, size);
     if (rc) goto err;
     flatcc_builder_clear(&builder);
     *idInOut = id;
@@ -98,7 +98,7 @@ obx_err testPutAndGetFlatObjects(OBX_cursor* cursor) {
     assert(foo->id == id);
     assert(strcmp(foo->text, "bar") == 0);
 
-    Foo_free(&foo);
+    Foo_free(foo);
     return 0;
 }
 

@@ -6,13 +6,12 @@ Introduction
 
 Installation and examples
 ------------------------- 
-Check the [ObjectBox C repository](https://github.com/objectbox/objectbox-c) for additional info and examples including the usage of flatcc.
+See [Installation docs](https://cpp.objectbox.io/installation) and check the [project's GitHub repository](https://github.com/objectbox/objectbox-c) for additional info and examples including the usage of flatcc.
 
-Single header
+Headers
 -------------
-The entire ObjectBox C API is defined in a single header file:
-
-**objectbox.h**
+* ObjectBox C99 support is provided by a single header file: **objectbox.h**
+* ObjectBox C++11 support is available in an additional header: **objectbox-cpp.h**
 
 Basic concepts
 --------------
@@ -22,22 +21,26 @@ Basic concepts
 * Objects are addressed using a 64 bit integer ID (`obx_id`)
 * There is no query language; queries are build using a [query builder](\ref OBX_query_builder)
 
+See [docs](https://cpp.objectbox.io) for more information on how to use ObjectBox in C and C++
+
 API Naming conventions
 ----------------------
-* methods: obx_thing_action()
-* structs: OBX_thing {}
-* error codes: OBX_ERROR_REASON
+* C methods: obx_thing_action()
+* C structs: OBX_thing {}
+* C error codes: OBX_ERROR_REASON
+* C++ namespace: obx::
 
 Essential types
 -----------------
 Check the docs for the following types:
 
-* [OBX_store](\ref OBX_store): the "database"; "opens" data files in a given directory
-* [OBX_box](\ref OBX_box): object operations like put and get  
-* [OBX_query_builder](\ref OBX_query_builder): used to construct queries using "query conditions"  
-* [OBX_query](\ref OBX_query): the product of a query builder can be executed to find objects matching the previously defined conditions  
+* [OBX_store](\ref OBX_store) and [obx::Store](\ref obx::Store): the "database"; "opens" data files in a given directory
+* [OBX_box](\ref OBX_box) and [obx::Box](\ref obx::Box): object operations like put and get  
+* [OBX_query_builder](\ref OBX_query_builder) and [obx::QueryBuilder](\ref obx::QueryBuilder): used to construct queries using "query conditions"  
+* [OBX_query](\ref OBX_query) and [obx::Query](\ref obx::Query): the product of a query builder can be executed to find objects matching the previously defined conditions  
 
 Essential Links/Readings
 ------------------------
+* High-level docs and examples: https://cpp.objectbox.io
 * Entity (object) IDs: https://docs.objectbox.io/advanced/object-ids
 * Meta model and UIDs: https://docs.objectbox.io/advanced/meta-model-ids-and-uids

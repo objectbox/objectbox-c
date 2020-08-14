@@ -20,7 +20,7 @@
 
 #include "objectbox-cpp.h"
 #include "objectbox-model.h"
-#include "tasklist-cpp.obx.h"
+#include "tasklist.obx.hpp"
 
 class TasklistCmdlineApp {
     obx::Store& store;

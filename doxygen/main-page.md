@@ -11,7 +11,7 @@ See [Installation docs](https://cpp.objectbox.io/installation) and check the [pr
 Headers
 -------------
 * ObjectBox C99 support is provided by a single header file: **objectbox.h**
-* ObjectBox C++11 support is available in an additional header: **objectbox-cpp.h**
+* ObjectBox C++11 support is available in an additional header: **objectbox.hpp**
 
 Basic concepts
 --------------

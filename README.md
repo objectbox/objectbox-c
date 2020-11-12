@@ -3,7 +3,8 @@ ObjectBox C and C++ APIs
 [ObjectBox](https://objectbox.io) is a superfast database for objects.
 This is the **ObjectBox runtime library** to run ObjectBox as an embedded database in your C or C++ application.
 
-**Latest version: 0.10.0** (2020-08-13). See [changelog](CHANGELOG.md) for more details. 
+**Latest version: 0.11.0** (2020-11-12).
+See [changelog](CHANGELOG.md) for more details. 
 
 In most cases you want to use the C and C++ APIs in combination with the **[ObjectBox Generator](https://github.com/objectbox/objectbox-generator) tool**.
 This way, you get a convenient C or C++ API which requires minimal code on your side to work with the database.
@@ -36,7 +37,7 @@ Usage and Installation
 The APIs come as single header file for C and C++:
  
   * C: [include/objectbox.h](include/objectbox.h)
-  * C++: [include/objectbox-cpp.h](include/objectbox-cpp.h) (depends on objectbox.h)
+  * C++: [include/objectbox.hpp](include/objectbox.hpp) (depends on objectbox.h)
   
 Compile your code against it and use the binary library (.so, .dylib, .dll depending on the platform) to link against.
 Head over to [ObjectBox C and C++ installation docs](https://cpp.objectbox.io/installation) for step-by-step instructions.
@@ -60,8 +61,8 @@ Have a look at the following TaskList example apps, depending on your programmin
 Documentation
 -------------
 * [C and C++ docs](https://cpp.objectbox.io/) - official ObjectBox C and C++ documentation 
-* [include/objectbox.h](include/objectbox.h) - C-API header file contains docs in as code comments 
-* [include/objectbox-cpp.h](include/objectbox-cpp.h) - C-API header file contains docs in as code comments 
+* [include/objectbox.h](include/objectbox.h) - C API header file contains docs as code comments 
+* [include/objectbox.hpp](include/objectbox.hpp) - C++ API header file contains docs as code comments 
 * [C and C++ API reference docs](https://objectbox.io/docfiles/c/current/) - online HTML docs (Doxygen) 
 
 Current state / Changelog

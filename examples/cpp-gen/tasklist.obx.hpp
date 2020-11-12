@@ -6,9 +6,8 @@
 #include <cstdint>
 
 #include "flatbuffers/flatbuffers.h"
-#include "objectbox-cpp.h"
 #include "objectbox.h"
-
+#include "objectbox.hpp"
 
 struct Task_;
 

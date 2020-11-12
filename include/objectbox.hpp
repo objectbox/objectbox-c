@@ -51,10 +51,22 @@ namespace {
 #define OBJECTBOX_VERIFY_STATE(c) \
     ((c) ? (void) (0) : throw std::runtime_error(std::string("State condition failed: " #c)))
 
-[[noreturn]] void throwLastError() { throw Exception(obx_last_error_message(), obx_last_error_code()); }
+[[noreturn]] void throwLastError(obx_err err = obx_last_error_code()) {
+    if (err != obx_last_error_code()) {
+        throw Exception(std::string("Only previous error text available: ") + obx_last_error_message(), err);
+    } else {
+        throw Exception(obx_last_error_message(), err);
+    }
+}
 
 void checkErrOrThrow(obx_err err) {
     if (err != OBX_SUCCESS) throwLastError();
+}
+
+bool checkSuccessOrThrow(obx_err err) {
+    if (err == OBX_NO_SUCCESS) return false;
+    if (err == OBX_SUCCESS) return true;
+    throwLastError(err);
 }
 
 template <typename T>
@@ -72,53 +84,241 @@ constexpr obx_schema_id entityId() {
 template <class T>
 class Box;
 
+template <class T>
+class AsyncBox;
+
 class Transaction;
 
 class Store {
     OBX_store* cStore_;
 
 public:
-    struct Options {
-        std::string directory;
-        size_t maxDbSizeInKByte = 0;
-        unsigned int fileMode = 0;
-        unsigned int maxReaders = 0;
-        OBX_model* model = nullptr;
+    class Options {
+        friend class Store;
+        mutable OBX_store_options* opt = nullptr;
 
-        Options() = default;
-        Options(OBX_model* obxModel) : model(obxModel) {}
+    public:
+        Options() {
+            opt = obx_opt();
+            checkPtrOrThrow(opt, "Could not create store options");
+        }
+
+        /// @deprecated is this used by generator?
+        Options(OBX_model* model) : Options() { this->model(model); }
+
+        ~Options() { obx_opt_free(opt); }
+
+        /// Set the model on the options. The default is no model.
+        /// NOTE: the model is always freed by this function, including when an error occurs.
+        Options& model(OBX_model* model) {
+            checkErrOrThrow(obx_opt_model(opt, model));
+            return *this;
+        }
+
+        /// Set the store directory on the options. The default is "objectbox".
+        Options& directory(const char* dir) {
+            checkErrOrThrow(obx_opt_directory(opt, dir));
+            return *this;
+        }
+
+        /// Set the store directory on the options. The default is "objectbox".
+        Options& directory(const std::string& dir) { return directory(dir.c_str()); }
+
+        /// Set the maximum db size on the options. The default is 1Gb.
+        Options& maxDbSizeInKb(size_t sizeInKb) {
+            obx_opt_max_db_size_in_kb(opt, sizeInKb);
+            return *this;
+        }
+
+        /// Set the file mode on the options. The default is 0644 (unix-style)
+        Options& fileMode(unsigned int fileMode) {
+            obx_opt_file_mode(opt, fileMode);
+            return *this;
+        }
+
+        /// Set the maximum number of readers on the options.
+        /// "Readers" are an finite resource for which we need to define a maximum number upfront.
+        /// The default value is enough for most apps and usually you can ignore it completely.
+        /// However, if you get the OBX_ERROR_MAX_READERS_EXCEEDED error, you should verify your threading.
+        /// For each thread, ObjectBox uses multiple readers.
+        /// Their number (per thread) depends on number of types, relations, and usage patterns.
+        /// Thus, if you are working with many threads (e.g. in a server-like scenario), it can make sense to increase
+        /// the maximum number of readers. Note: The internal default is currently around 120. So when hitting this
+        /// limit, try values around 200-500.
+        Options& maxReaders(unsigned int maxReaders) {
+            obx_opt_max_readers(opt, maxReaders);
+            return *this;
+        }
+
+        /// Set the model on the options copying the given bytes. The default is no model.
+        Options& modelBytes(const void* bytes, size_t size) {
+            checkErrOrThrow(obx_opt_model_bytes(opt, bytes, size));
+            return *this;
+        }
+
+        /// Like modelBytes() BUT WITHOUT copying the given bytes.
+        /// Thus, you must keep the bytes available until after the store is created.
+        Options& modelBytesDirect(const void* bytes, size_t size) {
+            checkErrOrThrow(obx_opt_model_bytes_direct(opt, bytes, size));
+            return *this;
+        }
+
+        /// When the DB is opened initially, ObjectBox can do a consistency check on the given amount of pages.
+        /// Reliable file systems already guarantee consistency, so this is primarily meant to deal with unreliable
+        /// OSes, file systems, or hardware. Thus, usually a low number (e.g. 1-20) is sufficient and does not impact
+        /// startup performance significantly. To completely disable this you can pass 0, but we recommend a setting of
+        /// at least 1.
+        /// Note: ObjectBox builds upon ACID storage, which guarantees consistency given that the file system is working
+        /// correctly (in particular fsync).
+        /// @param page_limit limits the number of checked pages (currently defaults to 0, but will be increased in the
+        /// future)
+        /// @param leaf_level enable for visiting leaf pages (defaults to false)
+        Options& validateOnOpen(size_t pageLimit, bool leafLevel) {
+            obx_opt_validate_on_open(opt, pageLimit, leafLevel);
+            return *this;
+        }
+
+        /// Don't touch unless you know exactly what you are doing:
+        /// Advanced setting typically meant for language bindings (not end users). See OBXPutPaddingMode description.
+        Options& putPaddingMode(OBXPutPaddingMode mode) {
+            obx_opt_put_padding_mode(opt, mode);
+            return *this;
+        }
+
+        /// Advanced setting meant only for special scenarios: setting to false causes opening the database in a
+        /// limited, schema-less mode. If you don't know what this means exactly: ignore this flag. Defaults to true.
+        Options& readSchema(bool value) {
+            obx_opt_read_schema(opt, value);
+            return *this;
+        }
+
+        /// Advanced setting recommended to be used together with read-only mode to ensure no data is lost.
+        /// Ignores the latest data snapshot (committed transaction state) and uses the previous snapshot instead.
+        /// When used with care (e.g. backup the DB files first), this option may also recover data removed by the
+        /// latest transaction. Defaults to false.
+        Options& usePreviousCommit(bool value) {
+            obx_opt_use_previous_commit(opt, value);
+            return *this;
+        }
+
+        /// Open store in read-only mode: no schema update, no write transactions. Defaults to false.
+        Options& readOnly(bool value) {
+            obx_opt_read_only(opt, value);
+            return *this;
+        }
+
+        /// Configure debug logging. Defaults to NONE
+        Options& debugFlags(OBXDebugFlags flags) {
+            obx_opt_debug_flags(opt, flags);
+            return *this;
+        }
+
+        /// Maximum of async elements in the queue before new elements will be rejected.
+        /// Hitting this limit usually hints that async processing cannot keep up;
+        /// data is produced at a faster rate than it can be persisted in the background.
+        /// In that case, increasing this value is not the only alternative; other values might also optimize
+        /// throughput. For example, increasing maxInTxDurationMicros may help too.
+        Options& asyncMaxQueueLength(size_t value) {
+            obx_opt_async_max_queue_length(opt, value);
+            return *this;
+        }
+
+        /// Producers (AsyncTx submitter) is throttled when the queue size hits this
+        Options& asyncThrottleAtQueueLength(size_t value) {
+            obx_opt_async_throttle_at_queue_length(opt, value);
+            return *this;
+        }
+
+        /// Sleeping time for throttled producers on each submission
+        Options& asyncThrottleMicros(uint32_t value) {
+            obx_opt_async_throttle_micros(opt, value);
+            return *this;
+        }
+
+        /// Maximum duration spent in a transaction before AsyncQ enforces a commit.
+        /// This becomes relevant if the queue is constantly populated at a high rate.
+        Options& asyncMaxInTxDuration(uint32_t micros) {
+            obx_opt_async_max_in_tx_duration(opt, micros);
+            return *this;
+        }
+
+        /// Maximum operations performed in a transaction before AsyncQ enforces a commit.
+        /// This becomes relevant if the queue is constantly populated at a high rate.
+        Options& asyncMaxInTxOperations(uint32_t value) {
+            obx_opt_async_max_in_tx_operations(opt, value);
+            return *this;
+        }
+
+        /// Before the AsyncQ is triggered by a new element in queue to starts a new run, it delays actually starting
+        /// the transaction by this value. This gives a newly starting producer some time to produce more than one a
+        /// single operation before AsyncQ starts. Note: this value should typically be low to keep latency low and
+        /// prevent accumulating too much operations.
+        Options& asyncPreTxnDelay(uint32_t delayMicros) {
+            obx_opt_async_pre_txn_delay(opt, delayMicros);
+            return *this;
+        }
+
+        /// Before the AsyncQ is triggered by a new element in queue to starts a new run, it delays actually starting
+        /// the transaction by this value. This gives a newly starting producer some time to produce more than one a
+        /// single operation before AsyncQ starts. Note: this value should typically be low to keep latency low and
+        /// prevent accumulating too much operations.
+        Options& asyncPreTxnDelay(uint32_t delayMicros, uint32_t delay2Micros, size_t minQueueLengthForDelay2) {
+            obx_opt_async_pre_txn_delay4(opt, delayMicros, delay2Micros, minQueueLengthForDelay2);
+            return *this;
+        }
+
+        /// Similar to preTxDelay but after a transaction was committed.
+        /// One of the purposes is to give other transactions some time to execute.
+        /// In combination with preTxDelay this can prolong non-TX batching time if only a few operations are around.
+        Options& asyncPostTxnDelay(uint32_t delayMicros) {
+            obx_opt_async_post_txn_delay(opt, delayMicros);
+            return *this;
+        }
+
+        /// Similar to preTxDelay but after a transaction was committed.
+        /// One of the purposes is to give other transactions some time to execute.
+        /// In combination with preTxDelay this can prolong non-TX batching time if only a few operations are around.
+        Options& asyncPostTxnDelay(uint32_t delayMicros, uint32_t delay2Micros, size_t minQueueLengthForDelay2) {
+            obx_opt_async_post_txn_delay4(opt, delayMicros, delay2Micros, minQueueLengthForDelay2);
+            return *this;
+        }
+
+        /// Numbers of operations below this value are considered "minor refills"
+        Options& asyncMinorRefillThreshold(size_t queueLength) {
+            obx_opt_async_minor_refill_threshold(opt, queueLength);
+            return *this;
+        }
+
+        /// If non-zero, this allows "minor refills" with small batches that came in (off by default).
+        Options& asyncMinorRefillMaxCount(uint32_t value) {
+            obx_opt_async_minor_refill_max_count(opt, value);
+            return *this;
+        }
+
+        /// Default value: 10000, set to 0 to deactivate pooling
+        Options& asyncMaxTxPoolSize(size_t value) {
+            obx_opt_async_max_tx_pool_size(opt, value);
+            return *this;
+        }
+
+        /// Total cache size; default: ~ 0.5 MB
+        Options& asyncObjectBytesMaxCacheSize(uint64_t value) {
+            obx_opt_async_object_bytes_max_cache_size(opt, value);
+            return *this;
+        }
+
+        /// Maximal size for an object to be cached (only cache smaller ones)
+        Options& asyncObjectBytesMaxSizeToCache(uint64_t value) {
+            obx_opt_async_object_bytes_max_size_to_cache(opt, value);
+            return *this;
+        }
     };
 
-    explicit Store(OBX_model* model) : Store(Options(model)) {}
+    explicit Store(OBX_model* model) : Store(Options().model(model)) {}
 
     explicit Store(const Options& options) {
-        if (options.model) {  // check model error explicitly or it may be swallowed later
-            obx_err err = obx_model_error_code(options.model);
-            if (err) {
-                const char* msg = obx_model_error_message(options.model);
-                obx_model_free(options.model);
-                throw Exception(msg, err);
-            }
-        }
-
-        OBX_store_options* opt = obx_opt();
-        checkPtrOrThrow(opt, "can't create store options");
-        if (!options.directory.empty()) {
-            if (obx_opt_directory(opt, options.directory.c_str()) != OBX_SUCCESS) {
-                obx_opt_free(opt);
-                throwLastError();
-            }
-        }
-        if (options.maxDbSizeInKByte) obx_opt_max_db_size_in_kb(opt, options.maxDbSizeInKByte);
-        if (options.fileMode) obx_opt_file_mode(opt, options.fileMode);
-        if (options.maxReaders) obx_opt_max_readers(opt, options.maxReaders);
-        if (options.model) {
-            if (obx_opt_model(opt, options.model) != OBX_SUCCESS) {
-                obx_opt_free(opt);
-                obx_model_free(options.model);
-                throwLastError();
-            }
-        }
+        OBX_store_options* opt = options.opt;
+        options.opt = nullptr;  // obx_store_open() will free it already (avoid double free)
         cStore_ = obx_store_open(opt);
         checkPtrOrThrow(cStore_, "can't open store");
     }
@@ -162,8 +362,8 @@ public:
 /// transactions are spawned, all of them must call success() in order for the top level transaction to be successful
 /// and actually commit.
 class Transaction {
-    OBX_txn* cTxn_;
     TxMode mode_;
+    OBX_txn* cTxn_;
 
 public:
     explicit Transaction(Store& store, TxMode mode)
@@ -171,14 +371,14 @@ public:
         checkPtrOrThrow(cTxn_, "can't start transaction");
     }
 
-    /// Never throws except some serious internal error occurred
-    virtual ~Transaction() noexcept(false) { close(); };
+    /// Never throws
+    virtual ~Transaction() { closeNoThrow(); };
 
     /// Delete because the default copy constructor can break things (i.e. a Transaction can not be copied).
     Transaction(const Transaction&) = delete;
 
     /// Move constructor, used by Store::tx()
-    Transaction(Transaction&& source) noexcept : cTxn_(source.cTxn_), mode_(source.mode_) { source.cTxn_ = nullptr; }
+    Transaction(Transaction&& source) noexcept : mode_(source.mode_), cTxn_(source.cTxn_) { source.cTxn_ = nullptr; }
 
     /// A Transaction is active if it was not ended via success(), close() or moving.
     bool isActive() { return cTxn_ != nullptr; }
@@ -200,22 +400,25 @@ public:
         checkErrOrThrow(obx_txn_success(txn));
     }
 
-    /// Explicit close to free up resources - usually you can leave this to the destructor.
+    /// Explicit close to free up resources (non-throwing version).
     /// It's OK to call this method multiple times; additional calls will have no effect.
-    void close() {
+    obx_err closeNoThrow() {
         OBX_txn* txnToClose = cTxn_;
         cTxn_ = nullptr;
-        if (txnToClose) {
-            checkErrOrThrow(obx_txn_close(txnToClose));
-        }
+        return obx_txn_close(txnToClose);
     }
+
+    /// Explicit close to free up resources; unlike closeNoThrow() (which is also called by the destructor), this
+    /// version throw in the unlikely case of failing.
+    /// It's OK to call this method multiple times; additional calls will have no effect.
+    void close() { checkErrOrThrow(closeNoThrow()); }
 };
 
 inline Transaction Store::tx(TxMode mode) { return Transaction(*this, mode); }
 inline Transaction Store::txRead() { return tx(TxMode::READ); }
 inline Transaction Store::txWrite() { return tx(TxMode::WRITE); }
 
-namespace {
+namespace {  // internal
 /// Internal cursor wrapper for convenience and RAII.
 class CursorTx {
     Transaction tx_;
@@ -230,7 +433,7 @@ public:
     /// Can't be copied, single owner of C resources is required (to avoid double-free during destruction)
     CursorTx(const CursorTx&) = delete;
 
-    CursorTx(CursorTx&& source) noexcept : cCursor_(source.cCursor_), tx_(std::move(source.tx_)) {
+    CursorTx(CursorTx&& source) noexcept : tx_(std::move(source.tx_)), cCursor_(source.cCursor_) {
         source.cCursor_ = nullptr;
     }
 
@@ -334,20 +537,20 @@ protected:
 
 namespace {  // internal
 class QCGroup : public QueryCondition {
-    bool isOr;  // whether it's AND or OR group
+    bool isOr_;  // whether it's AND or OR group
 
     // Must be a vector of pointers because QueryCondition is abstract - we can't have a vector of abstract objects.
     // Must be shared_ptr for our own copyAsPtr() to work, in other words vector of unique pointers can't be copied.
-    std::vector<std::shared_ptr<QueryCondition>> conditions;
+    std::vector<std::shared_ptr<QueryCondition>> conditions_;
 
 public:
     QCGroup(bool isOr, std::unique_ptr<QueryCondition>&& a, std::unique_ptr<QueryCondition>&& b)
-        : isOr(isOr), conditions({std::move(a), std::move(b)}) {}
+        : isOr_(isOr), conditions_({std::move(a), std::move(b)}) {}
 
     // override to combine multiple chained AND conditions into a same group
     QCGroup and_(const QueryCondition& other) override {
         // if this group is an OR group and we're adding an AND - create a new group
-        if (isOr) return QueryCondition::and_(other);
+        if (isOr_) return QueryCondition::and_(other);
 
         // otherwise, extend this one by making a copy and including the new condition in it
         return copyThisAndPush(other);
@@ -356,15 +559,15 @@ public:
     // we don't have to create copies of the QCGroup when the left-hand-side can be "consumed and moved" (rvalue ref)
     // Note: this is a "global" function, but declared here as a friend so it can access lhs.conditions
     friend inline QCGroup operator&&(QCGroup&& lhs, const QueryCondition& rhs) {
-        if (lhs.isOr) return lhs.and_(rhs);
-        lhs.conditions.push_back(internalCopyAsPtr(rhs));
+        if (lhs.isOr_) return lhs.and_(rhs);
+        lhs.conditions_.push_back(internalCopyAsPtr(rhs));
         return std::move(lhs);
     }
 
     // override to combine multiple chained OR conditions into a same group
     QCGroup or_(const QueryCondition& other) override {
         // if this group is an AND group and we're adding an OR - create a new group
-        if (!isOr) return QueryCondition::or_(other);
+        if (!isOr_) return QueryCondition::or_(other);
 
         // otherwise, extend this one by making a copy and including the new condition in it
         return copyThisAndPush(other);
@@ -373,8 +576,8 @@ public:
     // we don't have to create copies of the QCGroup when the left-hand-side can be "consumed and moved" (rvalue ref)
     // Note: this is a "global" function, but declared here as a friend so it can access lhs.conditions
     friend inline QCGroup operator||(QCGroup&& lhs, const QueryCondition& rhs) {
-        if (!lhs.isOr) return lhs.or_(rhs);
-        lhs.conditions.push_back(internalCopyAsPtr(rhs));
+        if (!lhs.isOr_) return lhs.or_(rhs);
+        lhs.conditions_.push_back(internalCopyAsPtr(rhs));
         return std::move(lhs);
     }
 
@@ -385,25 +588,25 @@ protected:
 
     QCGroup copyThisAndPush(const QueryCondition& other) {
         QCGroup copy(*this);
-        copy.conditions.push_back(internalCopyAsPtr(other));
+        copy.conditions_.push_back(internalCopyAsPtr(other));
         return copy;
     }
 
     obx_qb_cond applyTo(OBX_query_builder* cqb, bool isRoot) const override {
-        if (conditions.size() == 1) return internalApplyCondition(*conditions[0], cqb, isRoot);
-        OBJECTBOX_VERIFY_STATE(conditions.size() > 0);
+        if (conditions_.size() == 1) return internalApplyCondition(*conditions_[0], cqb, isRoot);
+        OBJECTBOX_VERIFY_STATE(conditions_.size() > 0);
 
         std::vector<obx_qb_cond> cond_ids;
-        cond_ids.reserve(conditions.size());
-        for (const std::shared_ptr<QueryCondition>& cond : conditions) {
+        cond_ids.reserve(conditions_.size());
+        for (const std::shared_ptr<QueryCondition>& cond : conditions_) {
             cond_ids.emplace_back(internalApplyCondition(*cond, cqb, false));
         }
-        if (isRoot && !isOr) {
+        if (isRoot && !isOr_) {
             // root All (AND) is implicit so no need to actually combine the conditions explicitly
             return 0;
         }
 
-        if (isOr) return obx_qb_any(cqb, cond_ids.data(), cond_ids.size());
+        if (isOr_) return obx_qb_any(cqb, cond_ids.data(), cond_ids.size());
         return obx_qb_all(cqb, cond_ids.data(), cond_ids.size());
     }
 };
@@ -413,10 +616,10 @@ protected:
 QCGroup obx::QueryCondition::and_(const QueryCondition& other) {
     return {false, copyAsPtr(), internalCopyAsPtr(other)};
 }
-QCGroup obx::QueryCondition::operator&&(const QueryCondition& rhs) { return and_(rhs); }
+inline QCGroup obx::QueryCondition::operator&&(const QueryCondition& rhs) { return and_(rhs); }
 
 QCGroup obx::QueryCondition::or_(const QueryCondition& other) { return {true, copyAsPtr(), internalCopyAsPtr(other)}; }
-QCGroup obx::QueryCondition::operator||(const QueryCondition& rhs) { return or_(rhs); }
+inline QCGroup obx::QueryCondition::operator||(const QueryCondition& rhs) { return or_(rhs); }
 
 namespace {  // internal
 enum class QueryOp {
@@ -441,11 +644,11 @@ enum class QueryOp {
 // using QCInt64, StringVector::contains query using QCString, etc.
 class QC : public QueryCondition {
 protected:
-    obx_schema_id propId;
-    QueryOp op;
+    obx_schema_id propId_;
+    QueryOp op_;
 
 public:
-    QC(obx_schema_id propId, QueryOp op) : propId(propId), op(op) {}
+    QC(obx_schema_id propId, QueryOp op) : propId_(propId), op_(op) {}
     virtual ~QC() = default;
 
 protected:
@@ -458,159 +661,153 @@ protected:
     /// of the current runtime check. Additionally, it might produce better (smaller/faster) code because the compiler
     /// could optimize out all the unused switch statements and variables (`value2`).
     [[noreturn]] void throwInvalidOperation() const {
-        throw std::logic_error(std::string("Invalid condition - operation not supported: ") + std::to_string(int(op)));
+        throw std::logic_error(std::string("Invalid condition - operation not supported: ") + std::to_string(int(op_)));
     }
 
     obx_qb_cond applyTo(OBX_query_builder* cqb, bool) const override {
-        switch (op) {
-            case QueryOp::Null:
-                return obx_qb_null(cqb, propId);
-            case QueryOp::NotNull:
-                return obx_qb_not_null(cqb, propId);
-            default:
-                throwInvalidOperation();
+        if (op_ == QueryOp::Null) {
+            return obx_qb_null(cqb, propId_);
+        } else if (op_ == QueryOp::NotNull) {
+            return obx_qb_not_null(cqb, propId_);
         }
+        throwInvalidOperation();
     }
 };
 
 class QCInt64 : public QC {
-    int64_t value1;
-    int64_t value2;
+    int64_t value1_;
+    int64_t value2_;
 
 public:
     QCInt64(obx_schema_id propId, QueryOp op, int64_t value1, int64_t value2 = 0)
-        : QC(propId, op), value1(value1), value2(value2) {}
+        : QC(propId, op), value1_(value1), value2_(value2) {}
 
 protected:
     std::unique_ptr<QueryCondition> copyAsPtr() const override { return QueryCondition::copyAsPtr(*this); };
 
     obx_qb_cond applyTo(OBX_query_builder* cqb, bool) const override {
-        switch (op) {
-            case QueryOp::Equal:
-                return obx_qb_equals_int(cqb, propId, value1);
-            case QueryOp::NotEqual:
-                return obx_qb_not_equals_int(cqb, propId, value1);
-            case QueryOp::Less:
-                return obx_qb_less_than_int(cqb, propId, value1);
-            case QueryOp::Greater:
-                return obx_qb_greater_than_int(cqb, propId, value1);
-            case QueryOp::Between:
-                return obx_qb_between_2ints(cqb, propId, value1, value2);
-            default:
-                throwInvalidOperation();
+        if (op_ == QueryOp::Equal) {
+            return obx_qb_equals_int(cqb, propId_, value1_);
+        } else if (op_ == QueryOp::NotEqual) {
+            return obx_qb_not_equals_int(cqb, propId_, value1_);
+        } else if (op_ == QueryOp::Less) {
+            return obx_qb_less_than_int(cqb, propId_, value1_);
+        } else if (op_ == QueryOp::LessOrEq) {
+            return obx_qb_less_or_equal_int(cqb, propId_, value1_);
+        } else if (op_ == QueryOp::Greater) {
+            return obx_qb_greater_than_int(cqb, propId_, value1_);
+        } else if (op_ == QueryOp::GreaterOrEq) {
+            return obx_qb_greater_or_equal_int(cqb, propId_, value1_);
+        } else if (op_ == QueryOp::Between) {
+            return obx_qb_between_2ints(cqb, propId_, value1_, value2_);
         }
+        throwInvalidOperation();
     }
 };
 
 class QCDouble : public QC {
-    double value1;
-    double value2;
+    double value1_;
+    double value2_;
 
 public:
     QCDouble(obx_schema_id propId, QueryOp op, double value1, double value2 = 0)
-        : QC(propId, op), value1(value1), value2(value2) {}
+        : QC(propId, op), value1_(value1), value2_(value2) {}
 
 protected:
     std::unique_ptr<QueryCondition> copyAsPtr() const override { return QueryCondition::copyAsPtr(*this); };
 
     obx_qb_cond applyTo(OBX_query_builder* cqb, bool) const override {
-        switch (op) {
-            case QueryOp::Less:
-                return obx_qb_less_than_double(cqb, propId, value1);
-            case QueryOp::Greater:
-                return obx_qb_greater_than_double(cqb, propId, value1);
-            case QueryOp::Between:
-                return obx_qb_between_2doubles(cqb, propId, value1, value2);
-            default:
-                throwInvalidOperation();
+        if (op_ == QueryOp::Less) {
+            return obx_qb_less_than_double(cqb, propId_, value1_);
+        } else if (op_ == QueryOp::LessOrEq) {
+            return obx_qb_less_or_equal_double(cqb, propId_, value1_);
+        } else if (op_ == QueryOp::Greater) {
+            return obx_qb_greater_than_double(cqb, propId_, value1_);
+        } else if (op_ == QueryOp::GreaterOrEq) {
+            return obx_qb_greater_or_equal_double(cqb, propId_, value1_);
+        } else if (op_ == QueryOp::Between) {
+            return obx_qb_between_2doubles(cqb, propId_, value1_, value2_);
         }
+        throwInvalidOperation();
     }
 };
 
 class QCInt32Array : public QC {
-    std::vector<int32_t> values;
+    std::vector<int32_t> values_;
 
 public:
     QCInt32Array(obx_schema_id propId, QueryOp op, std::vector<int32_t>&& values)
-        : QC(propId, op), values(std::move(values)) {}
+        : QC(propId, op), values_(std::move(values)) {}
 
 protected:
     std::unique_ptr<QueryCondition> copyAsPtr() const override { return QueryCondition::copyAsPtr(*this); };
 
     obx_qb_cond applyTo(OBX_query_builder* cqb, bool) const override {
-        switch (op) {
-            case QueryOp::In:
-                return obx_qb_in_int32s(cqb, propId, values.data(), values.size());
-            case QueryOp::NotIn:
-                return obx_qb_not_in_int32s(cqb, propId, values.data(), values.size());
-            default:
-                throwInvalidOperation();
+        if (op_ == QueryOp::In) {
+            return obx_qb_in_int32s(cqb, propId_, values_.data(), values_.size());
+        } else if (op_ == QueryOp::NotIn) {
+            return obx_qb_not_in_int32s(cqb, propId_, values_.data(), values_.size());
         }
+        throwInvalidOperation();
     }
 };
 
 class QCInt64Array : public QC {
-    std::vector<int64_t> values;
+    std::vector<int64_t> values_;
 
 public:
     QCInt64Array(obx_schema_id propId, QueryOp op, std::vector<int64_t>&& values)
-        : QC(propId, op), values(std::move(values)) {}
+        : QC(propId, op), values_(std::move(values)) {}
 
 protected:
     std::unique_ptr<QueryCondition> copyAsPtr() const override { return QueryCondition::copyAsPtr(*this); };
 
     obx_qb_cond applyTo(OBX_query_builder* cqb, bool) const override {
-        switch (op) {
-            case QueryOp::In:
-                return obx_qb_in_int64s(cqb, propId, values.data(), values.size());
-            case QueryOp::NotIn:
-                return obx_qb_not_in_int64s(cqb, propId, values.data(), values.size());
-            default:
-                throwInvalidOperation();
+        if (op_ == QueryOp::In) {
+            return obx_qb_in_int64s(cqb, propId_, values_.data(), values_.size());
+        } else if (op_ == QueryOp::NotIn) {
+            return obx_qb_not_in_int64s(cqb, propId_, values_.data(), values_.size());
         }
+        throwInvalidOperation();
     }
 };
 
 template <OBXPropertyType PropertyType>
 class QCString : public QC {
-    std::string value;
-    bool caseSensitive;
+    std::string value_;
+    bool caseSensitive_;
 
 public:
     QCString(obx_schema_id propId, QueryOp op, bool caseSensitive, std::string&& value)
-        : QC(propId, op), caseSensitive(caseSensitive), value(std::move(value)) {}
+        : QC(propId, op), caseSensitive_(caseSensitive), value_(std::move(value)) {}
 
 protected:
     std::unique_ptr<QueryCondition> copyAsPtr() const override { return QueryCondition::copyAsPtr(*this); };
 
     obx_qb_cond applyTo(OBX_query_builder* cqb, bool) const override {
         if (PropertyType == OBXPropertyType_String) {
-            switch (op) {
-                case QueryOp::Equal:
-                    return obx_qb_equals_string(cqb, propId, value.c_str(), caseSensitive);
-                case QueryOp::NotEqual:
-                    return obx_qb_not_equals_string(cqb, propId, value.c_str(), caseSensitive);
-                case QueryOp::Less:
-                    return obx_qb_less_than_string(cqb, propId, value.c_str(), caseSensitive);
-                case QueryOp::LessOrEq:
-                    return obx_qb_less_or_equal_string(cqb, propId, value.c_str(), caseSensitive);
-                case QueryOp::Greater:
-                    return obx_qb_greater_than_string(cqb, propId, value.c_str(), caseSensitive);
-                case QueryOp::GreaterOrEq:
-                    return obx_qb_greater_or_equal_string(cqb, propId, value.c_str(), caseSensitive);
-                case QueryOp::StartsWith:
-                    return obx_qb_starts_with_string(cqb, propId, value.c_str(), caseSensitive);
-                case QueryOp::EndsWith:
-                    return obx_qb_ends_with_string(cqb, propId, value.c_str(), caseSensitive);
-                case QueryOp::Contains:
-                    return obx_qb_contains_string(cqb, propId, value.c_str(), caseSensitive);
-                default:;  // fall-through to throw; default here so that the compiler doesn't complain
+            if (op_ == QueryOp::Equal) {
+                return obx_qb_equals_string(cqb, propId_, value_.c_str(), caseSensitive_);
+            } else if (op_ == QueryOp::NotEqual) {
+                return obx_qb_not_equals_string(cqb, propId_, value_.c_str(), caseSensitive_);
+            } else if (op_ == QueryOp::Less) {
+                return obx_qb_less_than_string(cqb, propId_, value_.c_str(), caseSensitive_);
+            } else if (op_ == QueryOp::LessOrEq) {
+                return obx_qb_less_or_equal_string(cqb, propId_, value_.c_str(), caseSensitive_);
+            } else if (op_ == QueryOp::Greater) {
+                return obx_qb_greater_than_string(cqb, propId_, value_.c_str(), caseSensitive_);
+            } else if (op_ == QueryOp::GreaterOrEq) {
+                return obx_qb_greater_or_equal_string(cqb, propId_, value_.c_str(), caseSensitive_);
+            } else if (op_ == QueryOp::StartsWith) {
+                return obx_qb_starts_with_string(cqb, propId_, value_.c_str(), caseSensitive_);
+            } else if (op_ == QueryOp::EndsWith) {
+                return obx_qb_ends_with_string(cqb, propId_, value_.c_str(), caseSensitive_);
+            } else if (op_ == QueryOp::Contains) {
+                return obx_qb_contains_string(cqb, propId_, value_.c_str(), caseSensitive_);
             }
         } else if (PropertyType == OBXPropertyType_StringVector) {
-            switch (op) {
-                case QueryOp::Contains:
-                    return obx_qb_any_equals_string(cqb, propId, value.c_str(), caseSensitive);
-                default:;  // fall-through to throw; default here so that the compiler doesn't complain
+            if (op_ == QueryOp::Contains) {
+                return obx_qb_any_equals_string(cqb, propId_, value_.c_str(), caseSensitive_);
             }
         }
         throwInvalidOperation();
@@ -621,59 +818,56 @@ using QCStringForString = QCString<OBXPropertyType_String>;
 using QCStringForStringVector = QCString<OBXPropertyType_StringVector>;
 
 class QCStringArray : public QC {
-    std::vector<std::string> values;  // stored string copies
-    bool caseSensitive;
+    std::vector<std::string> values_;  // stored string copies
+    bool caseSensitive_;
 
 public:
     QCStringArray(obx_schema_id propId, QueryOp op, bool caseSensitive, std::vector<std::string>&& values)
-        : QC(propId, op), caseSensitive(caseSensitive), values(std::move(values)) {}
+        : QC(propId, op), values_(std::move(values)), caseSensitive_(caseSensitive) {}
 
 protected:
     std::unique_ptr<QueryCondition> copyAsPtr() const override { return QueryCondition::copyAsPtr(*this); };
 
     obx_qb_cond applyTo(OBX_query_builder* cqb, bool) const override {
-        // don't make  an instance variable - it's not trivially copyable by copyAsPtr() and is usually called just once
+        // don't make an instance variable - it's not trivially copyable by copyAsPtr() and is usually called just once
         std::vector<const char*> cvalues;
-        cvalues.resize(values.size());
-        for (size_t i = 0; i < values.size(); i++) {
-            cvalues[i] = values[i].c_str();
+        cvalues.resize(values_.size());
+        for (size_t i = 0; i < values_.size(); i++) {
+            cvalues[i] = values_[i].c_str();
         }
-        switch (op) {
-            case QueryOp::In:
-                return obx_qb_in_strings(cqb, propId, cvalues.data(), cvalues.size(), caseSensitive);
-            default:
-                throwInvalidOperation();
+        if (op_ == QueryOp::In) {
+            return obx_qb_in_strings(cqb, propId_, cvalues.data(), cvalues.size(), caseSensitive_);
         }
+        throwInvalidOperation();
     }
 };
 
 class QCBytes : public QC {
-    std::vector<uint8_t> value;
+    std::vector<uint8_t> value_;
 
 public:
-    QCBytes(obx_schema_id propId, QueryOp op, std::vector<uint8_t>&& value) : QC(propId, op), value(std::move(value)) {}
+    QCBytes(obx_schema_id propId, QueryOp op, std::vector<uint8_t>&& value)
+        : QC(propId, op), value_(std::move(value)) {}
 
     QCBytes(obx_schema_id propId, QueryOp op, const void* data, size_t size)
-        : QC(propId, op), value(static_cast<const uint8_t*>(data), static_cast<const uint8_t*>(data) + size) {}
+        : QC(propId, op), value_(static_cast<const uint8_t*>(data), static_cast<const uint8_t*>(data) + size) {}
 
 protected:
     std::unique_ptr<QueryCondition> copyAsPtr() const override { return QueryCondition::copyAsPtr(*this); };
 
     obx_qb_cond applyTo(OBX_query_builder* cqb, bool) const override {
-        switch (op) {
-            case QueryOp::Equal:
-                return obx_qb_equals_bytes(cqb, propId, value.data(), value.size());
-            case QueryOp::Less:
-                return obx_qb_less_than_bytes(cqb, propId, value.data(), value.size());
-            case QueryOp::LessOrEq:
-                return obx_qb_less_or_equal_bytes(cqb, propId, value.data(), value.size());
-            case QueryOp::Greater:
-                return obx_qb_greater_than_bytes(cqb, propId, value.data(), value.size());
-            case QueryOp::GreaterOrEq:
-                return obx_qb_greater_or_equal_bytes(cqb, propId, value.data(), value.size());
-            default:
-                throwInvalidOperation();
+        if (op_ == QueryOp::Equal) {
+            return obx_qb_equals_bytes(cqb, propId_, value_.data(), value_.size());
+        } else if (op_ == QueryOp::Less) {
+            return obx_qb_less_than_bytes(cqb, propId_, value_.data(), value_.size());
+        } else if (op_ == QueryOp::LessOrEq) {
+            return obx_qb_less_or_equal_bytes(cqb, propId_, value_.data(), value_.size());
+        } else if (op_ == QueryOp::Greater) {
+            return obx_qb_greater_than_bytes(cqb, propId_, value_.data(), value_.size());
+        } else if (op_ == QueryOp::GreaterOrEq) {
+            return obx_qb_greater_or_equal_bytes(cqb, propId_, value_.data(), value_.size());
         }
+        throwInvalidOperation();
     }
 };
 }  // namespace
@@ -753,8 +947,18 @@ public:
     }
 
     template <OBXPropertyType T = ValueT, typename = EnableIfInteger<T>>
+    QCInt64 lessOrEq(int64_t value) const {
+        return {this->id_, QueryOp::LessOrEq, value};
+    }
+
+    template <OBXPropertyType T = ValueT, typename = EnableIfInteger<T>>
     QCInt64 greaterThan(int64_t value) const {
         return {this->id_, QueryOp::Greater, value};
+    }
+
+    template <OBXPropertyType T = ValueT, typename = EnableIfInteger<T>>
+    QCInt64 greaterOrEq(int64_t value) const {
+        return {this->id_, QueryOp::GreaterOrEq, value};
     }
 
     /// finds objects with property value between a and b (including a and b)
@@ -813,8 +1017,18 @@ public:
     }
 
     template <OBXPropertyType T = ValueT, typename = EnableIfFloating<T>>
+    QCDouble lessOrEq(double value) const {
+        return {this->id_, QueryOp::LessOrEq, value};
+    }
+
+    template <OBXPropertyType T = ValueT, typename = EnableIfFloating<T>>
     QCDouble greaterThan(double value) const {
         return {this->id_, QueryOp::Greater, value};
+    }
+
+    template <OBXPropertyType T = ValueT, typename = EnableIfFloating<T>>
+    QCDouble greaterOrEq(double value) const {
+        return {this->id_, QueryOp::GreaterOrEq, value};
     }
 
     /// finds objects with property value between a and b (including a and b)
@@ -992,8 +1206,8 @@ class Query;
 template <typename EntityT>
 class QueryBuilder {
     using EntityBinding = typename EntityT::_OBX_MetaInfo;
-    OBX_query_builder* cQueryBuilder_;
     Store& store_;
+    OBX_query_builder* cQueryBuilder_;
     bool isRoot_;
 
 public:
@@ -1012,7 +1226,7 @@ public:
     QueryBuilder(const QueryBuilder&) = delete;
 
     QueryBuilder(QueryBuilder&& source) noexcept
-        : cQueryBuilder_(source.cQueryBuilder_), store_(source.store_), isRoot_(source.isRoot_) {
+        : store_(source.store_), cQueryBuilder_(source.cQueryBuilder_), isRoot_(source.isRoot_) {
         source.cQueryBuilder_ = nullptr;
     }
 
@@ -1251,8 +1465,8 @@ public:
     template <typename PropertyEntityT, OBXPropertyType PropertyType,
               typename = enable_if_t<PropertyType == OBXPropertyType_Long || PropertyType == OBXPropertyType_Relation>>
     Query& setParameter(Property<PropertyEntityT, PropertyType> property, const std::vector<int64_t>& values) {
-        checkErrOrThrow(obx_query_param_int64s(cQuery_, entityId<PropertyEntityT>(), property.id(), values.data(),
-                                                  values.size()));
+        checkErrOrThrow(
+            obx_query_param_int64s(cQuery_, entityId<PropertyEntityT>(), property.id(), values.data(), values.size()));
         return *this;
     }
 
@@ -1260,8 +1474,8 @@ public:
     template <typename PropertyEntityT, OBXPropertyType PropertyType,
               typename = enable_if_t<PropertyType == OBXPropertyType_Int>>
     Query& setParameter(Property<PropertyEntityT, PropertyType> property, const std::vector<int32_t>& values) {
-        checkErrOrThrow(obx_query_param_int32s(cQuery_, entityId<PropertyEntityT>(), property.id(), values.data(),
-                                                  values.size()));
+        checkErrOrThrow(
+            obx_query_param_int32s(cQuery_, entityId<PropertyEntityT>(), property.id(), values.data(), values.size()));
         return *this;
     }
 
@@ -1303,10 +1517,11 @@ inline Query<EntityT> QueryBuilder<EntityT>::build() {
 
 template <typename EntityT>
 class Box {
+    friend AsyncBox<EntityT>;
     using EntityBinding = typename EntityT::_OBX_MetaInfo;
 
-    OBX_box* cBox_;
     Store& store_;
+    OBX_box* cBox_;
 
 public:
     explicit Box(Store& store) : store_(store), cBox_(obx_box(store.cPtr(), EntityBinding::entityId())) {
@@ -1314,6 +1529,12 @@ public:
     }
 
     OBX_box* cPtr() const { return cBox_; }
+
+    /// Async operations are available through the AsyncBox class.
+    /// @returns a shared AsyncBox instance with the default timeout (1s) for enqueueing.
+    /// Note: while this looks like it creates a new instance, it's only a thin wrapper and the actual ObjectBox core
+    /// internal async box really is shared.
+    AsyncBox<EntityT> async() { return AsyncBox<EntityT>(*this); }
 
     /// Start building a query this entity.
     QueryBuilder<EntityT> query() { return QueryBuilder<EntityT>(store_); }
@@ -1370,7 +1591,7 @@ public:
     /// @return true on success, false if the ID was not found, in which case outObject is untouched.
     bool get(obx_id id, EntityT& outObject) {
         CursorTx cursor(TxMode::READ, store_, EntityBinding::entityId());
-        void* data;
+        const void* data;
         size_t size;
         obx_err err = obx_cursor_get(cursor.cPtr(), id, &data, &size);
         if (err == OBX_NOT_FOUND) return false;
@@ -1384,7 +1605,7 @@ public:
     /// @return an "optional" wrapper of the object; empty if an object with the given ID doesn't exist.
     std::optional<EntityT> getOptional(obx_id id) {
         CursorTx cursor(TxMode::READ, store_, EntityBinding::entityId());
-        void* data;
+        const void* data;
         size_t size;
         obx_err err = obx_cursor_get(cursor.cPtr(), id, &data, &size);
         if (err == OBX_NOT_FOUND) return std::nullopt;
@@ -1416,7 +1637,7 @@ public:
         std::vector<std::unique_ptr<EntityT>> result;
 
         CursorTx cursor(TxMode::READ, store_, EntityBinding::entityId());
-        void* data;
+        const void* data;
         size_t size;
 
         obx_err err = obx_cursor_first(cursor.cPtr(), &data, &size);
@@ -1702,7 +1923,7 @@ private:
         result.resize(ids.size());  // prepare empty/nullptr pointers in the output
 
         CursorTx cursor(TxMode::READ, store_, EntityBinding::entityId());
-        void* data;
+        const void* data;
         size_t size;
 
         for (size_t i = 0; i < ids.size(); i++) {
@@ -1715,17 +1936,111 @@ private:
         return result;
     }
 
-    void readFromFb(std::unique_ptr<EntityT>& object, void* data, size_t size) {
+    void readFromFb(std::unique_ptr<EntityT>& object, const void* data, size_t size) {
         object = EntityBinding::newFromFlatBuffer(data, size);
     }
 
 #ifdef __cpp_lib_optional
-    void readFromFb(std::optional<EntityT>& object, void* data, size_t size) {
+    void readFromFb(std::optional<EntityT>& object, const void* data, size_t size) {
         object = EntityT();
         assert(object.has_value());
         EntityBinding::fromFlatBuffer(data, size, *object);
     }
 #endif
+};
+
+/// AsyncBox provides asynchronous ("happening on the background") database manipulation.
+template <typename EntityT>
+class AsyncBox {
+    using EntityBinding = typename EntityT::_OBX_MetaInfo;
+
+    friend Box<EntityT>;
+
+    const bool created_;  // whether this is a custom async box (true) or a shared instance (false)
+    OBX_async* cAsync_;
+    Store& store_;
+
+    /// Creates a shared AsyncBox instance.
+    explicit AsyncBox(Box<EntityT>& box) : AsyncBox(box.store_, false, obx_async(box.cPtr())) {}
+
+    /// Creates a shared AsyncBox instance.
+    AsyncBox(Store& store, bool owned, OBX_async* ptr) : store_(store), created_(owned), cAsync_(ptr) {
+        checkPtrOrThrow(cAsync_, "can't create async box");
+    }
+
+public:
+    /// Create a custom AsyncBox instance. Prefer using Box::async() for standard tasks, it gives you a shared instance.
+    AsyncBox(Store& store, uint64_t enqueueTimeoutMillis)
+        : AsyncBox(store, true, obx_async_create(store.box<EntityT>().cPtr(), enqueueTimeoutMillis)) {}
+
+    /// Move constructor
+    AsyncBox(AsyncBox&& source) noexcept : store_(source.store_), cAsync_(source.cAsync_), created_(source.created_) {
+        source.cAsync_ = nullptr;
+    }
+
+    /// Can't be copied, single owner of C resources is required (to avoid double-free during destruction)
+    AsyncBox(const AsyncBox&) = delete;
+
+    virtual ~AsyncBox() {
+        if (created_ && cAsync_) obx_async_close(cAsync_);
+    }
+
+    OBX_async* cPtr() const {
+        OBJECTBOX_VERIFY_STATE(cAsync_);
+        return cAsync_;
+    }
+
+    /// Reserve an ID, which is returned immediately for future reference, and insert asynchronously.
+    /// Note: of course, it can NOT be guaranteed that the entity will actually be inserted successfully in the DB.
+    /// @param object will be updated with the reserved ID.
+    /// @return the reserved ID which will be used for the object if the asynchronous insert succeeds.
+    obx_id put(EntityT& object, OBXPutMode mode = OBXPutMode_PUT) {
+        obx_id id = put(const_cast<const EntityT&>(object));
+        EntityBinding::setObjectId(object, id);
+        return id;
+    }
+
+    /// Reserve an ID, which is returned immediately for future reference and put asynchronously.
+    /// Note: of course, it can NOT be guaranteed that the entity will actually be put successfully in the DB.
+    /// @param mode - use INSERT or PUT; in case you need to use UPDATE, use the C-API directly for now
+    /// @return the reserved ID which will be used for the object if the asynchronous insert succeeds.
+    obx_id put(const EntityT& object, OBXPutMode mode = OBXPutMode_PUT) {
+        EntityBinding::toFlatBuffer(fbb, object);
+        obx_id id;
+        switch (mode) {
+            case OBXPutMode_PUT:
+                id = obx_async_put_object(cPtr(), fbb.GetBufferPointer(), fbb.GetSize());
+                break;
+            case OBXPutMode_INSERT:
+                id = obx_async_insert_object(cPtr(), fbb.GetBufferPointer(), fbb.GetSize());
+                break;
+            case OBXPutMode_UPDATE:
+                // TODO this looks like we should adjust the the C API...
+                throw std::invalid_argument(
+                    "UPDATE mode is currently not supported in C++ API AsyncBox, because C-API requires providing an "
+                    "ID. Use C-API directly.");
+            default:
+                throw std::invalid_argument("unknown mode");
+        }
+        fbbCleanAfterUse();
+        if (id == 0) throwLastError();
+        return id;
+    }
+
+    /// Asynchronously remove the object with the given id.
+    void remove(obx_id id) { checkErrOrThrow(obx_async_remove(cPtr(), id)); }
+
+    /// Await for all (including future) async submissions to be completed (the async queue becomes idle for a moment).
+    /// Currently this is not limited to the single entity this AsyncBox is working on but all entities in the store.
+    /// @returns true if all submissions were completed or async processing was not started; false if shutting down
+    /// @returns false if shutting down or an error occurred
+    bool awaitCompletion() { return obx_store_await_async_completion(store_.cPtr()); }
+
+    /// Await for previously submitted async operations to be completed (the async queue does not have to become idle).
+    /// Currently this is not limited to the single entity this AsyncBox is working on but all entities in the store.
+    /// @returns true if all submissions were completed or async processing was not started
+    /// @returns false if shutting down or an error occurred
+    bool awaitSubmitted() { return obx_store_await_async_submitted(store_.cPtr()); }
 };
 
 /**@}*/  // end of doxygen group

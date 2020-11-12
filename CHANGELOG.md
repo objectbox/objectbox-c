@@ -1,6 +1,23 @@
 ObjectBox C and C++ API Changelog
 =================================
 
+0.11.0 (2020-11-12)
+------------------
+* update CMakeLists.txt to simplify integration for users, e.g. with `FetchContent`,
+  see the updated [installation docs](https://cpp.objectbox.io/installation#objectbox-library)
+* rename `objectbox-cpp.h` to `objectbox.hpp`
+* change cursor and box read functions `get/first/current/next` `void**` argument to `const void**`
+* change multiple Query and QueryBuilder functions `int count` argument to `size_t count`
+* change observer signatures (`obx_err` return value and `size_t count` argument)
+* change C++ Store Options to a "builder" pattern and expose all available options 
+* new obx_model_entity_flags()
+* new obx_opt_async_*() to configure Async box behavior
+* new C++ AsyncBox and Box::async() to expose asynchronous operations
+* new QueryBuilder greater-or-equal/less-or-equal functions for integers and floats
+* new obx_query_offset_limit() setter for offset and limit in a single call
+* new obx_sync_available() to check whether the loaded runtime library supports [ObjectBox Sync](https://objectbox.io/sync)   
+* clean up linter warnings in the examples and `objectbox.h(pp)`
+
 0.10.0 (2020-08-13)
 ------------------
 C++ API queries and model classes for more feature-rich generated code.

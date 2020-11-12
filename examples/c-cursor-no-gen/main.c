@@ -14,11 +14,6 @@
  * limitations under the License.
  */
 
-#include "objectbox.h"
-
-// Flatbuffers builder
-#include "task_builder.h"
-
 #include <inttypes.h>
 #include <limits.h>
 #include <stdbool.h>
@@ -26,6 +21,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+
+#include "objectbox.h"
+#include "task_builder.h"
 
 #if !defined(_MSC_VER)
 #include <libgen.h>
@@ -149,12 +147,11 @@ void do_action_help(char* program_path) {
     program_path = basename(program_path);
 #endif
     printf("usage: %s\n", program_path);
-    const char* format = "    %-30s %s\n";
-    printf(format, "text of a new task", "create a new task with the given text");
-    printf(format, "", "(default) lists active tasks");
-    printf(format, "--list", "lists active and done tasks");
-    printf(format, "--done ID", "marks the task with the given ID as done");
-    printf(format, "--help", "displays this help");
+    printf("    %-30s %s\n", "text of a new task", "create a new task with the given text");
+    printf("    %-30s %s\n", "", "(default) lists active tasks");
+    printf("    %-30s %s\n", "--list", "lists active and done tasks");
+    printf("    %-30s %s\n", "--done ID", "marks the task with the given ID as done");
+    printf("    %-30s %s\n", "--help", "displays this help");
 }
 
 //--------------------------------------------------------------------------------------------------------------------
@@ -233,7 +230,7 @@ clean_up:
 //--------------------------------------------------------------------------------------------------------------------
 
 int do_action_done(OBX_store* store, int argc, char* argv[]) {
-    void* old_data = NULL;
+    const void* old_data = NULL;
     size_t old_size = 0;
     void* new_data = NULL;
     size_t new_size = 0;
@@ -241,7 +238,7 @@ int do_action_done(OBX_store* store, int argc, char* argv[]) {
     OBX_cursor* cursor = NULL;
 
     // grab the id from the command line
-    obx_id id = atol(argv[2]);
+    obx_id id = (obx_id) atol(argv[2]);
     if (!id) {
         printf("Error parsing ID \"%s\" as a number\n", argv[2]);
         return -1;
@@ -318,7 +315,7 @@ int do_action_list(OBX_store* store, bool list_open) {
     printf("%3s  %-19s  %-19s  %s\n", "ID", "Created", "Finished", "Text");
 
     // grab the first entity from the cursor
-    void* data;
+    const void* data;
     size_t size;
     bool found = false;
 
@@ -398,7 +395,7 @@ int parse_text(int argc, char** argv, char** outText) {
         return -1;
     }
 
-    *outText = (char*) malloc(sizeof(char) * (size + 1));
+    *outText = (char*) malloc(sizeof(char) * (size_t)(size + 1));
     if (!*outText) {
         printf("Could not process task text\n");
         return -1;
@@ -432,13 +429,13 @@ int task_build(void** out_buff, size_t* out_size, obx_id id, const char* text, u
         void* buffer = flatcc_builder_get_direct_buffer(&builder, out_size);
 
         if (!buffer) {
-            printf("%s error: (could not get direct buffer)\n", __FUNCTION__);
+            printf("%s error: (could not get direct buffer)\n", __func__);
             return -1;
         }
 
         *out_buff = malloc(*out_size);
         if (*out_buff == NULL) {
-            printf("%s error: (could not copy direct buffer)\n", __FUNCTION__);
+            printf("%s error: (could not copy direct buffer)\n", __func__);
             return -1;
         }
 

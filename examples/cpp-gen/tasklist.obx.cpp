@@ -32,7 +32,7 @@ std::unique_ptr<Task> Task_::newFromFlatBuffer(const void* data, size_t size) {
     return object;
 }
 
-void Task_::fromFlatBuffer(const void* data, size_t size, Task& outObject) {
+void Task_::fromFlatBuffer(const void* data, size_t, Task& outObject) {
     const auto* table = flatbuffers::GetRoot<flatbuffers::Table>(data);
     assert(table);
     outObject.id = table->GetField<uint64_t>(4, 0);

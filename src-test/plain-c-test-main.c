@@ -92,7 +92,7 @@ obx_err testCursorStuff(OBX_cursor* cursor) {
         flatcc_builder_clear(&builder);
     }
 
-    void* dataRead;
+    const void* dataRead;
     size_t sizeRead;
     if (obx_cursor_get(cursor, id, &dataRead, &sizeRead)) return printError();
     printf("%zu data bytes read from ID %ld\n", sizeRead, (long)id);

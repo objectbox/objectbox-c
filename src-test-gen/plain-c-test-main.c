@@ -1,8 +1,8 @@
 #include <inttypes.h>
 #include <string.h>
 
-#include "objectbox-model.h"
 #include "c_test.obx.h"
+#include "objectbox-model.h"
 
 obx_err printError() {
     printf("Unexpected error: %d, %d (%s)\n", obx_last_error_code(), obx_last_error_secondary(),
@@ -18,7 +18,9 @@ int put_foo(OBX_cursor* cursor, uint64_t* idInOut, char* text) {
     bool isNew = id == 0;
 
     id = obx_cursor_id_for_put(cursor, id);
-    if (!id) { return -1; }
+    if (!id) {
+        return -1;
+    }
 
     int rc = 0;
     size_t size;
@@ -33,17 +35,19 @@ int put_foo(OBX_cursor* cursor, uint64_t* idInOut, char* text) {
     *idInOut = id;
     return 0;
 
-    err:
+err:
     flatcc_builder_clear(&builder);
-    if (rc == 0) return -1;
-    else return rc;
+    if (rc == 0)
+        return -1;
+    else
+        return rc;
 }
 
 Foo* get_foo(OBX_cursor* cursor, uint64_t id) {
-    void* data;
+    const void* data;
     size_t size;
     int rc = obx_cursor_get(cursor, id, &data, &size);
-    if (rc == OBX_NOT_FOUND) return NULL; // No special treatment at the moment if not found
+    if (rc == OBX_NOT_FOUND) return NULL;  // No special treatment at the moment if not found
     if (rc) return NULL;
     return Foo_new_from_flatbuffer(data, size);
 }
@@ -54,10 +58,10 @@ obx_err testCursorStuff(OBX_cursor* cursor) {
 
     if ((rc = put_foo(cursor, &id, "bar"))) return rc;
 
-    void* dataRead;
+    const void* dataRead;
     size_t sizeRead;
     if (obx_cursor_get(cursor, id, &dataRead, &sizeRead)) return printError();
-    printf("%zu data bytes read from ID %ld\n", sizeRead, (long)id);
+    printf("%zu data bytes read from ID %ld\n", sizeRead, (long) id);
 
     rc = obx_cursor_get(cursor, id + 1, &dataRead, &sizeRead);
     if (rc != OBX_NOT_FOUND) {

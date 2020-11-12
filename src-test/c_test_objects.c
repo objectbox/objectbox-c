@@ -12,7 +12,7 @@ int create_foo(flatcc_builder_t* B, uint64_t id, char* text) {
 }
 
 Foo_table_t get_foo(OBX_cursor* cursor, uint64_t id) {
-    void* data;
+    const void* data;
     size_t size;
     int rc = obx_cursor_get(cursor, id, &data, &size);
     if (rc == 404) return NULL; // No special treatment at the moment if not found
@@ -64,7 +64,7 @@ int create_bar(flatcc_builder_t* B, uint64_t id, char* text, uint64_t fooId) {
 }
 
 Bar_table_t get_bar(OBX_cursor* cursor, uint64_t id) {
-    void* data;
+    const void* data;
     size_t size;
     int rc = obx_cursor_get(cursor, id, &data, &size);
     if (rc == 404) return NULL; // No special treatment at the moment if not found

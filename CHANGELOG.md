@@ -1,7 +1,7 @@
 ObjectBox C and C++ API Changelog
 =================================
 
-0.12.0 (2021-02-04)
+0.12.0 (2021-02-05)
 -------------------
 * add Linux ARMv8 (aarch64) native binary library
 * add `obx_sync_*` APIs (actual functionality is only available in a sync-enabled version; see https://objectbox.io/sync/)  

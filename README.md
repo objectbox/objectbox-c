@@ -3,7 +3,7 @@ ObjectBox C and C++ APIs
 [ObjectBox](https://objectbox.io) is a superfast database for objects.
 This is the **ObjectBox runtime library** to run ObjectBox as an embedded database in your C or C++ application.
 
-**Latest version: 0.12.0** (2021-02-04).
+**Latest version: 0.12.0** (2021-02-05).
 See [changelog](CHANGELOG.md) for more details. 
 
 In most cases you want to use the C and C++ APIs in combination with the **[ObjectBox Generator](https://github.com/objectbox/objectbox-generator) tool**.

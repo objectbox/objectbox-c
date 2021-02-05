@@ -24,6 +24,7 @@ static inline OBX_model* create_obx_model() {
     if (!model) return NULL;
     
     obx_model_entity(model, "Task", 1, 1139978622395651407);
+    obx_model_entity_flags(model, OBXEntityFlags_SYNC_ENABLED);
     obx_model_property(model, "id", OBXPropertyType_Long, 1, 6052852175666615421);
     obx_model_property_flags(model, OBXPropertyFlags_ID);
     obx_model_property(model, "text", OBXPropertyType_String, 2, 2217803131116660471);

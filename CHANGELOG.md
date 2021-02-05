@@ -1,8 +1,18 @@
 ObjectBox C and C++ API Changelog
 =================================
 
+0.12.0 (2021-02-04)
+-------------------
+* add Linux ARMv8 (aarch64) native binary library
+* add `obx_sync_*` APIs (actual functionality is only available in a sync-enabled version; see https://objectbox.io/sync/)  
+* add `obx_has_feature()`, and `OBXFeature` enum: please use these instead of the following, now deprecated functions:
+  `obx_supports_bytes_array()`, `obx_supports_time_series()`, and `obx_sync_available()`
+* add `obx_remove_db_files()` to delete database files in a given directory  
+* add optional `OBXEntityFlags_SHARED_GLOBAL_IDS` for `SYNC_ENABLED` entities  
+* semi-internal: add custom async callback APIs for Dart/Flutter language binding
+
 0.11.0 (2020-11-12)
-------------------
+-------------------
 * update CMakeLists.txt to simplify integration for users, e.g. with `FetchContent`,
   see the updated [installation docs](https://cpp.objectbox.io/installation#objectbox-library)
 * rename `objectbox-cpp.h` to `objectbox.hpp`
@@ -19,7 +29,7 @@ ObjectBox C and C++ API Changelog
 * clean up linter warnings in the examples and `objectbox.h(pp)`
 
 0.10.0 (2020-08-13)
-------------------
+-------------------
 C++ API queries and model classes for more feature-rich generated code.
 C-API cleanup & docs updates, including the following changes (some of them breaking due to renames):
 

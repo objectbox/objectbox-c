@@ -108,7 +108,7 @@ obx_err testPutAndGetFlatObjects(OBX_cursor* cursor) {
 
 int main(int argc, char* args[]) {
     printf("Testing libobjectbox version %s, core version: %s\n", obx_version_string(), obx_version_core_string());
-    printf("Byte array support: %d\n", obx_supports_bytes_array());
+    printf("Result array support: %d\n", obx_has_feature(OBXFeature_ResultArray));
 
     OBX_store* store = NULL;
     OBX_txn* txn = NULL;

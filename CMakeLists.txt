@@ -12,7 +12,7 @@ else ()
     project(objectbox-download)
 
     # Configuration updated for each release
-    set(DL_VERSION 0.11.0)
+    set(DL_VERSION 0.12.0)
     set(DL_CHANNEL testing)
 
     # Platform detection and other setup
@@ -31,6 +31,11 @@ else ()
 
     if (${DL_PLATFORM} STREQUAL Linux-x86_64)
         set(DL_PACKAGE 4db1be536558d833e52e862fd84d64d75c2b3656)
+
+    elseif (${DL_PLATFORM} MATCHES "^Linux-aarch64")
+        # Note: aarch64 is how a 64-bit ARMv8 is reported.
+        # Also, we don't match armv8 because we haven't seen it yet and also that "-R" and "-M: variants are 32-bit.
+        set(DL_PACKAGE b0bab81756b4971d42859e9b1bc6f8b3fa8e036e)
 
     elseif (${DL_PLATFORM} MATCHES "^Linux-armv7")
         set(DL_PACKAGE d42930899c74345edc43f8b7519ec7645c13e4d8)

@@ -1,39 +1,48 @@
 ObjectBox C and C++ APIs
 ========================
-[ObjectBox](https://objectbox.io) is a superfast database for objects.
+[ObjectBox](https://objectbox.io) is a superfast database and data synchronization solution.
 This is the **ObjectBox runtime library** to run ObjectBox as an embedded database in your C or C++ application.
 
-**Latest version: 0.12.0** (2021-02-05).
-See [changelog](CHANGELOG.md) for more details. 
-
-In most cases you want to use the C and C++ APIs in combination with the **[ObjectBox Generator](https://github.com/objectbox/objectbox-generator) tool**.
-This way, you get a convenient C or C++ API which requires minimal code on your side to work with the database.
-
-Here's a C++ code example that inserts a `Task` data object into the database: 
+Here's a C++ example that inserts a `Task` data object (a plain user defined `struct`) into the database: 
 ```c++
 obx::Box<Task> box(store);
 box.put({.text = "Buy milk"}); 
 ```
 
-Note: `Task` is a `struct` representing a user defined data model - see [ObjectBox C and C++ docs](https://cpp.objectbox.io/) for details.  
+See [ObjectBox C and C++ docs](https://cpp.objectbox.io/) for API details.  
 
-Some features
--------------
-* ACID compliant object storage ("object" as in class/struct instances)
-* Direct support for [FlatBuffers](https://google.github.io/flatbuffers/) data objects (aka "flatbuffers table") 
+**Latest version: 0.12.0** (2021-02-05).
+See [changelog](CHANGELOG.md) for more details.
+
+Feature Highlights
+------------------
+🏁 **High performance:** improving response rates and enabling real-time applications.\
+🪂 **ACID compliance:** Atomic, Consistent, Isolated, Durable.\
+🔗 **Relations:** object links / relationships are built-in.\
+🌱 **Scalable:** grows with your needs, handling millions of objects with ease.\
+💐 **Queries:** filter data as needed, even across relations.\
+🦮 **Statically typed:** compile time checks & optimizations.\
+💻 **Multiplatform:** Linux, Windows, Android, iOS, macOS.\
+📃 **Automatic schema migrations:** no update scripts needed.\
+👥 **[ObjectBox Sync](https://objectbox.io/sync/):** keeps data in sync between devices and servers.\
+🕒 **[ObjectBox TS](https://objectbox.io/time-series-database/):** time series extension for time based data.
+
+And some more technical details:
+
+* Zero-copy reads for highest possible performance; access tens of millions of objects on commodity hardware
 * Lightweight for smart devices; its binary size is only around 1 MB 
   (special feature reduced versions with 1/3 - 1/2 size are available on request)
-* Zero-copy reads for highest possible performance; access tens of millions of objects on commodity hardware
+* Direct support for [FlatBuffers](https://google.github.io/flatbuffers/) data objects (aka "flatbuffers table") 
 * Secondary indexes based on object properties
 * Async API for asynchronous puts, inserts, updates, removes
-* Automatic model migration (no schema upgrade scripts etc.) 
-* Powerful queries
-* Relations to other objects (1:N and M:N)
 * Optimized Time series types (TS edition only)
 * Data synchronization across the network (sync edition only)
 
 Usage and Installation
 ----------------------
+In most cases you want to use the C and C++ APIs in combination with the **[ObjectBox Generator](https://github.com/objectbox/objectbox-generator) tool**.
+This way, you get a convenient C or C++ API which requires minimal code on your side to work with the database.
+
 The APIs come as single header file for C and C++:
  
   * C: [include/objectbox.h](include/objectbox.h)
@@ -79,7 +88,8 @@ Besides new features, there may be breaking changes requiring modifications to y
 ### Supported platforms:
 * Linux 64-bit
 * Linux ARMv6hf (e.g. Raspberry PI Zero)
-* Linux ARMv7hf (e.g. Raspberry PI 3 and higher)
+* Linux ARMv7hf (e.g. Raspberry PI 3/4)
+* Linux ARMv8/AArch64 (e.g. Raspberry PI 3/4 with an 64 bit OS like Ubuntu)
 * MacOS 64-bit
 * Windows 32-bit
 * Windows 64-bit
@@ -93,7 +103,7 @@ For the C API, data consists of bytes representing FlatBuffers tables, which you
 
 License
 -------
-    Copyright 2018-2020 ObjectBox Ltd. All rights reserved.
+    Copyright 2018-2021 ObjectBox Ltd. All rights reserved.
     
     Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.

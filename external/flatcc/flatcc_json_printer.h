@@ -49,7 +49,7 @@ extern "C" {
     XX(bad_input,               "bad input")                                \
     XX(deep_recursion,          "deep recursion")                           \
     /*                                                                      \
-     * When the output was larger than the available fixed size buffer,     \
+     * When the output was larger than the available fixed length buffer,     \
      * or dynamic allocation could not grow the buffer sufficiently.        \
      */                                                                     \
     XX(overflow,                "overflow")
@@ -119,7 +119,7 @@ static inline void flatcc_json_printer_reset(flatcc_json_printer_t *ctx)
 /*
  * A custom init function can be implemented with a custom flush
  * function can be custom implemented. A few have been provided:
- * init with external fixed size buffer, and init with dynamically
+ * init with external fixed length buffer, and init with dynamically
  * growing buffer.
  *
  * Because there are a lot of small print functions, it is essentially
@@ -165,7 +165,7 @@ int flatcc_json_printer_init_buffer(flatcc_json_printer_t *ctx, char *buffer, si
  * Returns the current buffer pointer and also the content size in
  * `buffer_size` if it is null. The operation is not very useful for
  * file oriented printers (created with `init`) and will then only
- * return the unflushed buffer content. For fixed size buffers
+ * return the unflushed buffer content. For fixed length buffers
  * (`init_buffer`), only the last content is available if the buffer
  * overflowed. Works well with (`init_buffer`) when the dynamic buffer
  * is be reused, otherwise `finalize_dynamic_buffer` could be more
@@ -324,7 +324,7 @@ static inline void flatcc_json_printer_flush_partial(flatcc_json_printer_t *ctx)
 /* Returns the total printed size but flushed and in buffer. */
 static inline size_t flatcc_json_printer_total(flatcc_json_printer_t *ctx)
 {
-    return (size_t)(ctx->total + (ctx->p - ctx->buf));
+    return ctx->total + (size_t)(ctx->p - ctx->buf);
 }
 
 /*
@@ -360,9 +360,9 @@ static inline size_t flatcc_json_printer_flush(flatcc_json_printer_t *ctx)
  */
 
 /* Escaped and quoted string. */
-void flatcc_json_printer_string(flatcc_json_printer_t *ctx, const char *s, int n);
+void flatcc_json_printer_string(flatcc_json_printer_t *ctx, const char *s, size_t n);
 /* Unescaped and unquoted string. */
-void flatcc_json_printer_write(flatcc_json_printer_t *ctx, const char *s, int n);
+void flatcc_json_printer_write(flatcc_json_printer_t *ctx, const char *s, size_t n);
 /* Print a newline and issues a partial flush. */
 void flatcc_json_printer_nl(flatcc_json_printer_t *ctx);
 /* Like numbers, a partial flush is not issued. */
@@ -391,7 +391,7 @@ void flatcc_json_printer_float(flatcc_json_printer_t *ctx, float v);
 void flatcc_json_printer_double(flatcc_json_printer_t *ctx, double v);
 
 void flatcc_json_printer_enum(flatcc_json_printer_t *ctx,
-        const char *symbol, int len);
+        const char *symbol, size_t len);
 
 /*
  * Convenience function to add a trailing newline, flush the buffer,
@@ -493,49 +493,62 @@ typedef void flatcc_json_printer_bool_enum_f(flatcc_json_printer_t *ctx, flatbuf
 #define __define_print_scalar_field_proto(TN, T)                            \
 void flatcc_json_printer_ ## TN ## _field(flatcc_json_printer_t *ctx,       \
         flatcc_json_printer_table_descriptor_t *td,                         \
-        int id, const char *name, int len, T v);
+        int id, const char *name, size_t len, T v);
+
+#define __define_print_scalar_optional_field_proto(TN, T)                   \
+void flatcc_json_printer_ ## TN ## _optional_field(                         \
+        flatcc_json_printer_t *ctx,                                         \
+        flatcc_json_printer_table_descriptor_t *td,                         \
+        int id, const char *name, size_t len);
 
 #define __define_print_scalar_struct_field_proto(TN, T)                     \
 void flatcc_json_printer_ ## TN ## _struct_field(flatcc_json_printer_t *ctx,\
         int index, const void *p, size_t offset,                            \
-        const char *name, int len);
+        const char *name, size_t len);
 
 #define __define_print_scalar_array_struct_field_proto(TN, T)               \
 void flatcc_json_printer_ ## TN ## _array_struct_field(                     \
         flatcc_json_printer_t *ctx,                                         \
         int index, const void *p, size_t offset,                            \
-        const char *name, int len, size_t count);
+        const char *name, size_t len, size_t count);
 
 #define __define_print_enum_array_struct_field_proto(TN, T)                 \
 void flatcc_json_printer_ ## TN ## _enum_array_struct_field(                \
         flatcc_json_printer_t *ctx,                                         \
         int index, const void *p, size_t offset,                            \
-        const char *name, int len, size_t count,                            \
+        const char *name, size_t len, size_t count,                         \
         flatcc_json_printer_ ## TN ##_enum_f *pf);
 
 #define __define_print_enum_struct_field_proto(TN, T)                       \
 void flatcc_json_printer_ ## TN ## _enum_struct_field(                      \
         flatcc_json_printer_t *ctx,                                         \
         int index, const void *p, size_t offset,                            \
-        const char *name, int len,                                          \
+        const char *name, size_t len,                                       \
         flatcc_json_printer_ ## TN ##_enum_f *pf);
 
 #define __define_print_enum_field_proto(TN, T)                              \
 void flatcc_json_printer_ ## TN ## _enum_field(flatcc_json_printer_t *ctx,  \
         flatcc_json_printer_table_descriptor_t *td,                         \
-        int id, const char *name, int len, T v,                             \
+        int id, const char *name, size_t len, T v,                          \
+        flatcc_json_printer_ ## TN ##_enum_f *pf);
+
+#define __define_print_enum_optional_field_proto(TN, T)                     \
+void flatcc_json_printer_ ## TN ## _enum_optional_field(                    \
+        flatcc_json_printer_t *ctx,                                         \
+        flatcc_json_printer_table_descriptor_t *td,                         \
+        int id, const char *name, size_t len,                               \
         flatcc_json_printer_ ## TN ##_enum_f *pf);
 
 #define __define_print_scalar_vector_field_proto(TN, T)                     \
 void flatcc_json_printer_ ## TN ## _vector_field(flatcc_json_printer_t *ctx,\
         flatcc_json_printer_table_descriptor_t *td,                         \
-        int id, const char *name, int len);
+        int id, const char *name, size_t len);
 
 #define __define_print_enum_vector_field_proto(TN, T)                       \
 void flatcc_json_printer_ ## TN ## _enum_vector_field(                      \
         flatcc_json_printer_t *ctx,                                         \
         flatcc_json_printer_table_descriptor_t *td,                         \
-        int id, const char *name, int len,                                  \
+        int id, const char *name, size_t len,                               \
         flatcc_json_printer_ ## TN ##_enum_f *pf);
 
 __define_print_scalar_field_proto(uint8, uint8_t)
@@ -559,6 +572,28 @@ __define_print_enum_field_proto(int16, int16_t)
 __define_print_enum_field_proto(int32, int32_t)
 __define_print_enum_field_proto(int64, int64_t)
 __define_print_enum_field_proto(bool, flatbuffers_bool_t)
+
+__define_print_scalar_optional_field_proto(uint8, uint8_t)
+__define_print_scalar_optional_field_proto(uint16, uint16_t)
+__define_print_scalar_optional_field_proto(uint32, uint32_t)
+__define_print_scalar_optional_field_proto(uint64, uint64_t)
+__define_print_scalar_optional_field_proto(int8, int8_t)
+__define_print_scalar_optional_field_proto(int16, int16_t)
+__define_print_scalar_optional_field_proto(int32, int32_t)
+__define_print_scalar_optional_field_proto(int64, int64_t)
+__define_print_scalar_optional_field_proto(bool, flatbuffers_bool_t)
+__define_print_scalar_optional_field_proto(float, float)
+__define_print_scalar_optional_field_proto(double, double)
+
+__define_print_enum_optional_field_proto(uint8, uint8_t)
+__define_print_enum_optional_field_proto(uint16, uint16_t)
+__define_print_enum_optional_field_proto(uint32, uint32_t)
+__define_print_enum_optional_field_proto(uint64, uint64_t)
+__define_print_enum_optional_field_proto(int8, int8_t)
+__define_print_enum_optional_field_proto(int16, int16_t)
+__define_print_enum_optional_field_proto(int32, int32_t)
+__define_print_enum_optional_field_proto(int64, int64_t)
+__define_print_enum_optional_field_proto(bool, flatbuffers_bool_t)
 
 __define_print_scalar_struct_field_proto(uint8, uint8_t)
 __define_print_scalar_struct_field_proto(uint16, uint16_t)
@@ -634,7 +669,7 @@ __define_print_enum_vector_field_proto(bool, flatbuffers_bool_t)
 
 void flatcc_json_printer_uint8_vector_base64_field(flatcc_json_printer_t *ctx,
         flatcc_json_printer_table_descriptor_t *td,
-        int id, const char *name, int len, int urlsafe);
+        int id, const char *name, size_t len, int urlsafe);
 
 /*
  * If `fid` is null, the identifier is not checked and is allowed to be
@@ -669,70 +704,70 @@ int flatcc_json_printer_struct_as_root(flatcc_json_printer_t *ctx,
 void flatcc_json_printer_delimit_enum_flags(flatcc_json_printer_t *ctx, int multiple);
 
 /* The index increments from 0 to handle space. It is not the flag bit position. */
-void flatcc_json_printer_enum_flag(flatcc_json_printer_t *ctx, int index, const char *symbol, int len);
+void flatcc_json_printer_enum_flag(flatcc_json_printer_t *ctx, int index, const char *symbol, size_t len);
 
 /* A struct inside another struct, as opposed to inside a table or a root. */
 void flatcc_json_printer_embedded_struct_field(flatcc_json_printer_t *ctx,
         int index, const void *p, size_t offset,
-        const char *name, int len,
+        const char *name, size_t len,
         flatcc_json_printer_struct_f pf);
 
 void flatcc_json_printer_embedded_struct_array_field(flatcc_json_printer_t *ctx,
         int index, const void *p, size_t offset,
-        const char *name, int len,
+        const char *name, size_t len,
         size_t size, size_t count,
         flatcc_json_printer_struct_f pf);
 
 void flatcc_json_printer_struct_field(flatcc_json_printer_t *ctx,
         flatcc_json_printer_table_descriptor_t *td,
-        int id, const char *name, int len,
+        int id, const char *name, size_t len,
         flatcc_json_printer_struct_f *pf);
 
 void flatcc_json_printer_string_field(flatcc_json_printer_t *ctx,
         flatcc_json_printer_table_descriptor_t *td,
-        int id, const char *name, int len);
+        int id, const char *name, size_t len);
 
 void flatcc_json_printer_string_vector_field(flatcc_json_printer_t *ctx,
         flatcc_json_printer_table_descriptor_t *td,
-        int id, const char *name, int len);
+        int id, const char *name, size_t len);
 
 void flatcc_json_printer_table_field(flatcc_json_printer_t *ctx,
         flatcc_json_printer_table_descriptor_t *td,
-        int id, const char *name, int len,
+        int id, const char *name, size_t len,
         flatcc_json_printer_table_f pf);
 
 void flatcc_json_printer_struct_vector_field(flatcc_json_printer_t *ctx,
         flatcc_json_printer_table_descriptor_t *td,
-        int id, const char *name, int len,
+        int id, const char *name, size_t len,
         size_t size,
         flatcc_json_printer_struct_f pf);
 
 void flatcc_json_printer_table_vector_field(flatcc_json_printer_t *ctx,
         flatcc_json_printer_table_descriptor_t *td,
-        int id, const char *name, int len,
+        int id, const char *name, size_t len,
         flatcc_json_printer_table_f pf);
 
 void flatcc_json_printer_union_vector_field(flatcc_json_printer_t *ctx,
         flatcc_json_printer_table_descriptor_t *td,
-        int id, const char *name, int len,
+        int id, const char *name, size_t len,
         flatcc_json_printer_union_type_f ptf,
         flatcc_json_printer_union_f pf);
 
 void flatcc_json_printer_struct_as_nested_root(flatcc_json_printer_t *ctx,
         flatcc_json_printer_table_descriptor_t *td,
-        int id, const char *name, int len,
+        int id, const char *name, size_t len,
         const char *fid,
         flatcc_json_printer_struct_f *pf);
 
 void flatcc_json_printer_table_as_nested_root(flatcc_json_printer_t *ctx,
         flatcc_json_printer_table_descriptor_t *td,
-        int id, const char *name, int len,
+        int id, const char *name, size_t len,
         const char *fid,
         flatcc_json_printer_table_f pf);
 
 void flatcc_json_printer_union_field(flatcc_json_printer_t *ctx,
         flatcc_json_printer_table_descriptor_t *td,
-        int id, const char *name, int len,
+        int id, const char *name, size_t len,
         flatcc_json_printer_union_type_f ptf,
         flatcc_json_printer_union_f pf);
 

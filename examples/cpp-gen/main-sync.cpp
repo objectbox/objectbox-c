@@ -16,6 +16,8 @@
 
 #include "tasklist-example-app.hpp"
 
+#include "objectbox-sync.hpp"
+
 using namespace obx;
 
 int main(int argc, char* argv[]) {

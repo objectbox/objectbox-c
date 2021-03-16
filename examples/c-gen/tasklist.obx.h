@@ -10,16 +10,19 @@
 #include "flatcc/flatcc_builder.h"
 #include "objectbox.h"
 
-/// Internal function used in other generated functions to put (write) explicitly typed objects 
+/// Internal function used in other generated functions to put (write) explicitly typed objects.
 static obx_id tasklist_obx_h_put_object(OBX_box* box, void* object,
                              bool (*to_flatbuffer)(flatcc_builder_t*, const void*, void**, size_t*), OBXPutMode mode);
 
-/// Internal function used in other generated functions to get (read) explicitly typed objects
+/// Internal function used in other generated functions to get (read) explicitly typed objects.
 static void* tasklist_obx_h_get_object(OBX_box* box, obx_id id, void* (*from_flatbuffer)(const void*, size_t));
+
+/// Internal function used in other generated functions to get a vTable offset for a given field.
+static flatbuffers_voffset_t tasklist_obx_h_fb_field_offset(flatbuffers_voffset_t vs, const flatbuffers_voffset_t* vt, size_t field);
 
 
 typedef struct Task {
-    uint64_t id;
+    obx_id id;
     char* text;
     uint64_t date_created;
     uint64_t date_finished;
@@ -71,19 +74,25 @@ static bool Task_to_flatbuffer(flatcc_builder_t* B, const Task* object, void** o
     void* p;
     flatcc_builder_ref_t* _p;
     
-    if (!(p = flatcc_builder_table_add(B, 0, 8, 8))) return false;
-    flatbuffers_uint64_write_to_pe(p, object->id);
+    {
+        if (!(p = flatcc_builder_table_add(B, 0, 8, 8))) return false;
+        flatbuffers_uint64_write_to_pe(p, object->id);
+    }
     
     if (offset_text) {
         if (!(_p = flatcc_builder_table_add_offset(B, 1))) return false;
         *_p = offset_text;
     }
     
-    if (!(p = flatcc_builder_table_add(B, 2, 8, 8))) return false;
-    flatbuffers_uint64_write_to_pe(p, object->date_created);
+    {
+        if (!(p = flatcc_builder_table_add(B, 2, 8, 8))) return false;
+        flatbuffers_uint64_write_to_pe(p, object->date_created);
+    }
     
-    if (!(p = flatcc_builder_table_add(B, 3, 8, 8))) return false;
-    flatbuffers_uint64_write_to_pe(p, object->date_finished);
+    {
+        if (!(p = flatcc_builder_table_add(B, 3, 8, 8))) return false;
+        flatbuffers_uint64_write_to_pe(p, object->date_finished);
+    }
     
     flatcc_builder_ref_t ref;
     if (!(ref = flatcc_builder_end_table(B))) return false;
@@ -106,9 +115,16 @@ static bool Task_from_flatbuffer(const void* data, size_t size, Task* out_object
     const flatbuffers_uoffset_t* val;
     size_t len;
 
-    out_object->id = (vs < sizeof(vt[0]) * (0 + 3)) ? 0 : flatbuffers_uint64_read_from_pe(table + __flatbuffers_voffset_read_from_pe(vt + 0 + 2));
-    
-    if ((offset = (vs < sizeof(vt[0]) * (1 + 3)) ? 0 : __flatbuffers_voffset_read_from_pe(vt + 1 + 2))) {
+    // reset so that dangling pointers are freed properly on malloc() failures
+#ifdef __cplusplus
+    *out_object = {};
+#else
+    *out_object = (Task){0};
+#endif
+    if ((offset = tasklist_obx_h_fb_field_offset(vs, vt, 0))) {
+        out_object->id = flatbuffers_uint64_read_from_pe(table + offset);
+    }
+    if ((offset = tasklist_obx_h_fb_field_offset(vs, vt, 1))) {
         val = (const flatbuffers_uoffset_t*)(table + offset + sizeof(flatbuffers_uoffset_t) + __flatbuffers_uoffset_read_from_pe(table + offset));
         len = (size_t) __flatbuffers_uoffset_read_from_pe(val - 1);
         out_object->text = (char*) malloc((len+1) * sizeof(char));
@@ -121,9 +137,12 @@ static bool Task_from_flatbuffer(const void* data, size_t size, Task* out_object
     } else {
         out_object->text = NULL;
     }
-    
-    out_object->date_created = (vs < sizeof(vt[0]) * (2 + 3)) ? 0 : flatbuffers_uint64_read_from_pe(table + __flatbuffers_voffset_read_from_pe(vt + 2 + 2));
-    out_object->date_finished = (vs < sizeof(vt[0]) * (3 + 3)) ? 0 : flatbuffers_uint64_read_from_pe(table + __flatbuffers_voffset_read_from_pe(vt + 3 + 2));
+    if ((offset = tasklist_obx_h_fb_field_offset(vs, vt, 2))) {
+        out_object->date_created = flatbuffers_uint64_read_from_pe(table + offset);
+    }
+    if ((offset = tasklist_obx_h_fb_field_offset(vs, vt, 3))) {
+        out_object->date_finished = flatbuffers_uint64_read_from_pe(table + offset);
+    }
     return true;
 }
 
@@ -214,4 +233,8 @@ static void* tasklist_obx_h_get_object(OBX_box* box, obx_id id, void* (*from_fla
 
     obx_txn_close(tx);
     return result;
+}
+
+static flatbuffers_voffset_t tasklist_obx_h_fb_field_offset(flatbuffers_voffset_t vs, const flatbuffers_voffset_t* vt, size_t field) {
+    return (vs < sizeof(vt[0]) * (field + 3)) ? 0 : __flatbuffers_voffset_read_from_pe(vt + field + 2);
 }

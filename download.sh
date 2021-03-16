@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# ObjectBox libraries are hosted in a Conan repository on Bintray:
+# ObjectBox libraries are available as GitHub release artifacts.
 # This script downloads the current version of the library and extracts/installs it locally.
 # The download happens in a "download" directory.
 # After download and extraction, the script asks if the lib should be installed in /usr/local/lib.
@@ -39,10 +39,9 @@ tty -s || quiet=true
 
 # Note: optional arguments like "--quiet" shifts argument positions in the case block above
 
-version=${1:-0.12.0}
-repoType=${2:-testing}
-os=${3:-$(uname)}
-arch=${4:-$(uname -m)}
+version=${1:-0.13.0}
+os=${2:-$(uname)}
+arch=${3:-$(uname -m)}
 echo "Base config: OS ${os} and arch ${arch}"
 
 if [[ "$os" == MINGW* ]] || [[ "$os" == CYGWIN* ]]; then
@@ -51,22 +50,21 @@ if [[ "$os" == MINGW* ]] || [[ "$os" == CYGWIN* ]]; then
 fi
 
 if [[ "$os" == "Darwin" ]]; then
-    echo "Adjusted OS to Macos"
-    os=Macos
+    echo "Adjusted OS to Mac"
+    os=Mac
 fi
 
-if [[ $arch == "aarch64" ]]; then
-    arch=armv8
-    echo "Selected ${arch} architecture for download"
-elif [[ $arch == armv7* ]] && [[ $arch != "armv7" ]]; then
-    arch=armv7
+if [[ $arch == "x86_64" ]]; then
+    arch=x64
+elif [[ $arch == armv7* ]]; then
+    arch=armv7hf
     echo "Selected ${arch} architecture for download (hard FP only!)"
-elif [[ $arch == armv6* ]] && [[ $arch != "armv6" ]]; then
-    arch=armv6
+elif [[ $arch == armv6* ]]; then
+    arch=armv6hf
     echo "Selected ${arch} architecture for download (hard FP only!)"
 fi
 
-conf="${os}::${arch}"
+conf=$(echo "${os}-${arch}" | tr '[:upper:]' '[:lower:]')   # convert to lowercase
 echo "Using configuration ${conf}"
 
 # sudo might not be defined (e.g. when building a docker image)
@@ -78,7 +76,7 @@ fi
 # original location where we installed in previous versions of this script
 oldLibDir=
 
-if [[ "$os" = "Macos" ]]; then
+if [[ "$os" = "Mac" ]]; then
     libFileName=libobjectbox.dylib
     libDirectory=/usr/local/lib
 elif [[ "$os" = "Windows" ]]; then
@@ -101,7 +99,7 @@ fi
 
 
 function printUsage() {
-    echo "download.sh [\$1:version] [\$2:repo type] [\$3:os] [\$4:arch]"
+    echo "download.sh [\$1:version] [\$2:os] [\$3:arch]"
     echo
     echo "  Options (use at front only):"
     echo "    --quiet: skipping asking to install to ${libDirectory}"
@@ -165,31 +163,29 @@ do
    esac
 done
 
-HASHES="
-Linux::x86_64 4db1be536558d833e52e862fd84d64d75c2b3656
-Linux::armv6 4a625f0bd5f477eacd9bd35e9c44c834d057524b
-Linux::armv7 d42930899c74345edc43f8b7519ec7645c13e4d8
-Linux::armv8 b0bab81756b4971d42859e9b1bc6f8b3fa8e036e
-Windows::x86 11e6a84a7894f41df553e7c92534c3bf26896802
-Windows::x86_64 ca33edce272a279b24f87dc0d4cf5bbdcffbc187
-Macos::x86_64 46f53f156846659bf39ad6675fa0ee8156e859fe
-" #END_OF_HASHES
-hash=$( awk -v key="${conf}" '$1 == key {print $NF}' <<< "$HASHES" )
-if [ -z "$hash" ]; then
-    echo "Error: the platform configuration ${conf} is unsupported."
-    echo "You can select the configuration manually (use --help for details)"
+SUPPORTED_PLATFORMS="
+linux-x64
+linux-armv6
+linux-armv7
+linux-aarch64
+windows-x86
+windows-x64
+mac-x64
+" #SUPPORTED_PLATFORMS
+if [ -z "$( awk -v key="${conf}" '$1 == key {print $NF}' <<< "$SUPPORTED_PLATFORMS" )" ]; then
+    echo "Warning: platform configuration ${conf} is not listed as supported."
+    echo "Trying to continue with the download anyway, maybe the list is out of date."
+    echo "If that doesn't work you can select the configuration manually (use --help for details)"
     echo "Possible values are:"
-    awk '$0 {print " - " $1 }'  <<< "$HASHES"
+    awk '$0 {print " - " $1 }'  <<< "$SUPPORTED_PLATFORMS"
     exit 1
 fi
 
-baseName=libobjectbox-${version}-${hash}
-targetDir="${downloadDir}/${repoType}/${baseName}"
-archiveFile="${targetDir}.tgz"
-remoteRepo="https://dl.bintray.com/objectbox/conan/objectbox/objectbox-c"
-downloadUrl="${remoteRepo}/${version}/${repoType}/0/package/${hash}/0/conan_package.tgz"
-
-echo "Downloading ObjectBox library version ${version} ${repoType} (${hash})..."
+targetDir="${downloadDir}/${version}-${conf}"
+archiveFile="${targetDir}.tar.gz"
+downloadUrl="https://github.com/objectbox/objectbox-c/releases/download/v${version}/objectbox-${conf}.tar.gz"
+echo "Resolved URL: ${downloadUrl}"
+echo "Downloading ObjectBox library version v${version} for ${conf}..."
 mkdir -p "$(dirname "${archiveFile}")"
 
 # Support both curl and wget because their availability is platform dependent

@@ -1,0 +1,531 @@
+/*
+ * Copyright 2018-2021 ObjectBox Ltd. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#pragma once
+
+#include "objectbox-sync.h"
+#include "objectbox.hpp"
+
+static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 12 && OBX_VERSION_PATCH == 0,
+              "Versions of objectbox.h and objectbox-sync.hpp files must be exactly the same");
+
+static_assert(sizeof(obx_id) == sizeof(OBX_id_array::ids[0]),
+              "Can't directly link OBX_id_array.ids to std::vector<obx_id>::data()");
+
+namespace obx {
+
+class SyncCredentials {
+    friend SyncClient;
+    OBXSyncCredentialsType type_;
+    std::vector<uint8_t> data_;
+
+public:
+    SyncCredentials(OBXSyncCredentialsType type, std::vector<uint8_t>&& data) : type_(type), data_(std::move(data)) {}
+
+    SyncCredentials(OBXSyncCredentialsType type, const std::string& data) : type_(type), data_(data.size()) {
+        static_assert(sizeof(data_[0]) == sizeof(data[0]), "Can't directly copy std::string to std::vector<uint8_t>");
+        if (!data.empty()) memcpy(data_.data(), data.data(), data.size() * sizeof(data[0]));
+    }
+
+    static SyncCredentials none() {
+        return SyncCredentials(OBXSyncCredentialsType::OBXSyncCredentialsType_NONE, std::vector<uint8_t>{});
+    }
+
+    static SyncCredentials sharedSecret(std::vector<uint8_t>&& data) {
+        return SyncCredentials(OBXSyncCredentialsType::OBXSyncCredentialsType_SHARED_SECRET, std::move(data));
+    }
+
+    static SyncCredentials sharedSecret(const std::string& str) {
+        return SyncCredentials(OBXSyncCredentialsType::OBXSyncCredentialsType_SHARED_SECRET, str);
+    }
+
+    static SyncCredentials googleAuth(const std::string& str) {
+        return SyncCredentials(OBXSyncCredentialsType::OBXSyncCredentialsType_GOOGLE_AUTH, str);
+    }
+};
+
+/// Listens to login events on a sync client.
+class SyncClientLoginListener {
+public:
+    /// Called on a successful login.
+    /// At this point the connection to the sync destination was established and
+    /// entered an operational state, in which data can be sent both ways.
+    virtual void loggedIn() noexcept = 0;
+
+    /// Called on a login failure with a `result` code specifying the issue.
+    virtual void loginFailed(OBXSyncCode) noexcept = 0;
+};
+
+/// Listens to sync client connection events.
+class SyncClientConnectionListener {
+public:
+    /// Called when connection is established (on first connect or after a reconnection).
+    virtual void connected() noexcept = 0;
+
+    /// Called when the client is disconnected from the sync server, e.g. due to a network error.
+    /// Depending on the configuration, the sync client typically tries to reconnect automatically, triggering
+    /// `connected()` when successful.
+    virtual void disconnected() noexcept = 0;
+};
+
+/// Listens to sync complete event on a sync client.
+class SyncClientCompletionListener {
+public:
+    /// Called each time a sync completes, in the sense that the client has caught up with the current server state.
+    /// Or in other words, when the client is "up-to-date".
+    virtual void updatesCompleted() noexcept = 0;
+};
+
+/// Listens to sync time information events on a sync client.
+class SyncClientTimeListener {
+public:
+    using TimePoint = std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds>;
+
+    /// Called when a server time information is received on the client.
+    /// @param time - current server timestamp since Unix epoch
+    virtual void serverTime(TimePoint time) noexcept = 0;
+};
+
+/// A collection of changes made to one entity type during a sync transaction. Delivered via SyncClientChangeListener.
+/// IDs of changed objects are available via `puts` and those of removed objects via `removals`.
+struct SyncChange {
+    obx_schema_id entityId;
+    std::vector<obx_id> puts;
+    std::vector<obx_id> removals;
+};
+
+/// Notifies of fine granular changes on the object level happening during sync.
+/// @note this may affect performance. Use SyncClientCompletionListener for the general synchronization-finished check.
+class SyncClientChangeListener {
+public:
+    /// Called each time when data `changes` from sync were applied locally.
+    virtual void changed(const std::vector<SyncChange>& changes) noexcept = 0;
+
+private:
+    friend SyncClient;
+
+    void changed(const OBX_sync_change_array* cChanges) noexcept {
+        std::vector<SyncChange> changes(cChanges->count);
+
+        for (size_t i = 0; i < cChanges->count; i++) {
+            const OBX_sync_change& cChange = cChanges->list[i];
+            SyncChange& change = changes[i];
+            change.entityId = cChange.entity_id;
+            copyIdVector(cChange.puts, change.puts);
+            copyIdVector(cChange.removals, change.removals);
+        }
+
+        changed(changes);
+    }
+
+    void copyIdVector(const OBX_id_array* in, std::vector<obx_id>& out) {
+        static_assert(sizeof(in->ids[0]) == sizeof(out[0]), "Can't directly copy OBX_id_array to std::vector<obx_id>");
+        if (!in) {
+            out.clear();
+        } else {
+            out.resize(in->count);
+            memcpy(out.data(), in->ids, sizeof(out[0]) * out.size());
+        }
+    }
+};
+
+/// Listens to all possible sync events. See each base abstract class for detailed information.
+class SyncClientListener : public SyncClientLoginListener,
+                           public SyncClientCompletionListener,
+                           public SyncClientConnectionListener,
+                           public SyncClientChangeListener,
+                           public SyncClientTimeListener {};
+
+/// Sync client is used to provide ObjectBox Sync client capabilities to your application.
+class SyncClient : public Closable {
+    Store& store_;
+    std::atomic<OBX_sync*> cSync_{nullptr};
+
+    /// Groups all listeners and the mutex that protects access to them. We could have a separate mutex for each
+    /// listener but that's probably an overkill.
+    struct {
+        std::mutex mutex;
+        std::shared_ptr<SyncClientLoginListener> login;
+        std::shared_ptr<SyncClientCompletionListener> complete;
+        std::shared_ptr<SyncClientConnectionListener> connect;
+        std::shared_ptr<SyncClientChangeListener> change;
+        std::shared_ptr<SyncClientTimeListener> time;
+        std::shared_ptr<SyncClientListener> combined;
+    } listeners_;
+
+    using Guard = std::lock_guard<std::mutex>;
+
+public:
+    /// Creates a sync client associated with the given store and options.
+    /// This does not initiate any connection attempts yet: call start() to do so.
+    explicit SyncClient(Store& store, const std::string& serverUri, const SyncCredentials& creds) : store_(store) {
+        cSync_ = checkPtrOrThrow(obx_sync(store.cPtr(), serverUri.c_str()), "can't initialize sync client");
+        setCredentials(creds);
+    }
+
+    /// Creates a sync client associated with the given store and options.
+    /// This does not initiate any connection attempts yet: call start() to do so.
+    /// @param cSync an initialized sync client. You must NOT call obx_sync_close() yourself anymore.
+    explicit SyncClient(Store& store, OBX_sync* cSync) : store_(store), cSync_(cSync) {
+        OBJECTBOX_VERIFY_STATE(obx_has_feature(OBXFeature_Sync));
+        OBJECTBOX_VERIFY_ARGUMENT(cSync);
+    }
+
+    /// Can't be moved due to the atomic cSync_ - use shared_ptr instead of SyncClient instances directly.
+    SyncClient(SyncClient&& source) = delete;
+
+    /// Can't be copied, single owner of C resources is required (to avoid double-free during destruction)
+    SyncClient(const SyncClient&) = delete;
+
+    virtual ~SyncClient() {
+        try {
+            close();
+        } catch (...) {
+        }
+    }
+
+    /// Closes and cleans up all resources used by this sync client.
+    /// It can no longer be used afterwards, make a new sync client instead.
+    /// Does nothing if this sync client has already been closed.
+    void close() override {
+        OBX_sync* ptr = cSync_.exchange(nullptr);
+        if (ptr) {
+            {
+                std::lock_guard<std::mutex> lock(store_.syncClientMutex_);
+                store_.syncClient_.reset();
+            }
+            checkErrOrThrow(obx_sync_close(ptr));
+        }
+    }
+
+    /// Returns if this sync client is closed and can no longer be used.
+    bool isClosed() override { return cSync_ == nullptr; }
+
+    /// Gets the current sync client state.
+    OBXSyncState state() const { return obx_sync_state(cPtr()); }
+
+    /// Configure authentication credentials.
+    /// The accepted OBXSyncCredentials type depends on your sync-server configuration.
+    void setCredentials(const SyncCredentials& creds) {
+        checkErrOrThrow(obx_sync_credentials(cPtr(), creds.type_, creds.data_.empty() ? nullptr : creds.data_.data(),
+                                             creds.data_.size()));
+    }
+
+    /// Sets the interval in which the client sends "heartbeat" messages to the server, keeping the connection alive.
+    /// To detect disconnects early on the client side, you can also use heartbeats with a smaller interval.
+    /// Use with caution, setting a low value (i.e. sending heartbeat very often) may cause an excessive network usage
+    /// as well as high server load (when there are many connected clients).
+    /// @param interval default value is 25 minutes (1 500 000 milliseconds), which is also the allowed maximum.
+    /// @throws if value is not in the allowed range, e.g. larger than the maximum (1 500 000).
+    void setHeartbeatInterval(std::chrono::milliseconds interval) {
+        checkErrOrThrow(obx_sync_heartbeat_interval(cPtr(), interval.count()));
+    }
+
+    /// Triggers the heartbeat sending immediately.
+    void sendHeartbeat() { checkErrOrThrow(obx_sync_send_heartbeat(cPtr())); }
+
+    /// Configures how sync updates are received from the server.
+    /// If automatic sync updates are turned off, they will need to be requested manually.
+    void setRequestUpdatesMode(OBXRequestUpdatesMode mode) {
+        checkErrOrThrow(obx_sync_request_updates_mode(cPtr(), mode));
+    }
+
+    /// Configures the maximum number of outgoing TX messages that can be sent without an ACK from the server.
+    /// @throws if value is not in the valid range 1-20
+    void maxMessagesInFlight(int value) { checkErrOrThrow(obx_sync_max_messages_in_flight(cPtr(), value)); }
+
+    /// Once the sync client is configured, you can "start" it to initiate synchronization.
+    /// This method triggers communication in the background and will return immediately.
+    /// If the synchronization destination is reachable, this background thread will connect to the server,
+    /// log in (authenticate) and, depending on "update request mode", start syncing data.
+    /// If the device, network or server is currently offline, connection attempts will be retried later using
+    /// increasing backoff intervals.
+    /// If you haven't set the credentials in the options during construction, call setCredentials() before start().
+    void start() { checkErrOrThrow(obx_sync_start(cPtr())); }
+
+    /// Stops this sync client. Does nothing if it is already stopped.
+    void stop() { checkErrOrThrow(obx_sync_stop(cPtr())); }
+
+    /// Request updates since we last synchronized our database.
+    /// @param subscribeForFuturePushes to keep sending us future updates as they come in.
+    /// @see updatesCancel() to stop the updates
+    bool requestUpdates(bool subscribeForFuturePushes) {
+        return checkSuccessOrThrow(obx_sync_updates_request(cPtr(), subscribeForFuturePushes));
+    }
+
+    /// Cancel updates from the server so that it will stop sending updates.
+    /// @see updatesRequest()
+    bool cancelUpdates() { return checkSuccessOrThrow(obx_sync_updates_cancel(cPtr())); }
+
+    /// Count the number of messages in the outgoing queue, i.e. those waiting to be sent to the server.
+    /// Note: This calls uses a (read) transaction internally: 1) it's not just a "cheap" return of a single number.
+    ///       While this will still be fast, avoid calling this function excessively.
+    ///       2) the result follows transaction view semantics, thus it may not always match the actual value.
+    /// @return the number of messages in the outgoing queue
+    uint64_t outgoingMessageCount(uint64_t limit = 0) {
+        uint64_t result;
+        checkErrOrThrow(obx_sync_outgoing_message_count(cPtr(), limit, &result));
+        return result;
+    }
+
+    // TODO remove c-style listeners to avoid confusion? Users would still be able use them directly through the C-API.
+
+    /// @param listener set NULL to reset
+    /// @param listenerArg is a pass-through argument passed to the listener
+    void setConnectListener(OBX_sync_listener_connect* listener, void* listenerArg) {
+        obx_sync_listener_connect(cPtr(), listener, listenerArg);
+    }
+
+    /// @param listener set NULL to reset
+    /// @param listenerArg is a pass-through argument passed to the listener
+    void setDisconnectListener(OBX_sync_listener_disconnect* listener, void* listenerArg) {
+        obx_sync_listener_disconnect(cPtr(), listener, listenerArg);
+    }
+
+    /// @param listener set NULL to reset
+    /// @param listenerArg is a pass-through argument passed to the listener
+    void setLoginListener(OBX_sync_listener_login* listener, void* listenerArg) {
+        obx_sync_listener_login(cPtr(), listener, listenerArg);
+    }
+
+    /// @param listener set NULL to reset
+    /// @param listenerArg is a pass-through argument passed to the listener
+    void setLoginFailureListener(OBX_sync_listener_login_failure* listener, void* listenerArg) {
+        obx_sync_listener_login_failure(cPtr(), listener, listenerArg);
+    }
+
+    /// @param listener set NULL to reset
+    /// @param listenerArg is a pass-through argument passed to the listener
+    void setCompleteListener(OBX_sync_listener_complete* listener, void* listenerArg) {
+        obx_sync_listener_complete(cPtr(), listener, listenerArg);
+    }
+
+    /// @param listener set NULL to reset
+    /// @param listenerArg is a pass-through argument passed to the listener
+    void setChangeListener(OBX_sync_listener_change* listener, void* listenerArg) {
+        obx_sync_listener_change(cPtr(), listener, listenerArg);
+    }
+
+    void setLoginListener(std::shared_ptr<SyncClientLoginListener> listener) {
+        Guard lock(listeners_.mutex);
+
+        // if it was previosly set, unassign in the core before (potentially) destroying the object
+        removeLoginListener();
+
+        if (listener) {
+            listeners_.login = std::move(listener);
+            void* arg = listeners_.login.get();
+
+            obx_sync_listener_login(
+                cPtr(), [](void* arg) { static_cast<SyncClientLoginListener*>(arg)->loggedIn(); }, arg);
+            obx_sync_listener_login_failure(
+                cPtr(),
+                [](void* arg, OBXSyncCode code) { static_cast<SyncClientLoginListener*>(arg)->loginFailed(code); },
+                arg);
+        }
+    }
+
+    void setCompletionListener(std::shared_ptr<SyncClientCompletionListener> listener) {
+        Guard lock(listeners_.mutex);
+
+        // if it was previously set, unassign in the core before (potentially) destroying the object
+        removeCompletionListener();
+
+        if (listener) {
+            listeners_.complete = std::move(listener);
+            obx_sync_listener_complete(
+                cPtr(), [](void* arg) { static_cast<SyncClientCompletionListener*>(arg)->updatesCompleted(); },
+                listeners_.complete.get());
+        }
+    }
+
+    void setConnectionListener(std::shared_ptr<SyncClientConnectionListener> listener) {
+        Guard lock(listeners_.mutex);
+
+        // if it was previously set, unassign in the core before (potentially) destroying the object
+        removeConnectionListener();
+
+        if (listener) {
+            listeners_.connect = std::move(listener);
+            void* arg = listeners_.connect.get();
+
+            obx_sync_listener_connect(
+                cPtr(), [](void* arg) { static_cast<SyncClientConnectionListener*>(arg)->connected(); }, arg);
+            obx_sync_listener_disconnect(
+                cPtr(), [](void* arg) { static_cast<SyncClientConnectionListener*>(arg)->disconnected(); }, arg);
+        }
+    }
+
+    void setTimeListener(std::shared_ptr<SyncClientTimeListener> listener) {
+        Guard lock(listeners_.mutex);
+
+        // if it was previously set, unassign in the core before (potentially) destroying the object
+        removeTimeListener();
+
+        if (listener) {
+            listeners_.time = std::move(listener);
+            obx_sync_listener_server_time(
+                cPtr(),
+                [](void* arg, int64_t timestampNs) {
+                    static_cast<SyncClientTimeListener*>(arg)->serverTime(
+                        SyncClientTimeListener::TimePoint(std::chrono::nanoseconds(timestampNs)));
+                },
+                listeners_.time.get());
+        }
+    }
+
+    void setChangeListener(std::shared_ptr<SyncClientChangeListener> listener) {
+        Guard lock(listeners_.mutex);
+
+        // if it was previously set, unassign in the core before (potentially) destroying the object
+        removeChangeListener();
+
+        if (listener) {
+            listeners_.change = std::move(listener);
+            obx_sync_listener_change(
+                cPtr(),
+                [](void* arg, const OBX_sync_change_array* cChanges) {
+                    static_cast<SyncClientChangeListener*>(arg)->changed(cChanges);
+                },
+                listeners_.change.get());
+        }
+    }
+
+    void setListener(std::shared_ptr<SyncClientListener> listener) {
+        Guard lock(listeners_.mutex);
+
+        // if it was previously set, unassign in the core before (potentially) destroying the object
+        bool forceRemove = listeners_.combined.get() != nullptr;
+        removeLoginListener(forceRemove);
+        removeCompletionListener(forceRemove);
+        removeConnectionListener(forceRemove);
+        removeTimeListener(forceRemove);
+        removeChangeListener(forceRemove);
+        listeners_.combined.reset();
+
+        if (listener) {
+            listeners_.combined = std::move(listener);
+            void* arg = listeners_.combined.get();
+
+            // Note: we need to use a templated forward* method so that the override for the right class is called.
+            obx_sync_listener_login(
+                cPtr(), [](void* arg) { static_cast<SyncClientListener*>(arg)->loggedIn(); }, arg);
+            obx_sync_listener_login_failure(
+                cPtr(), [](void* arg, OBXSyncCode code) { static_cast<SyncClientListener*>(arg)->loginFailed(code); },
+                arg);
+            obx_sync_listener_complete(
+                cPtr(), [](void* arg) { static_cast<SyncClientListener*>(arg)->updatesCompleted(); }, arg);
+            obx_sync_listener_connect(
+                cPtr(), [](void* arg) { static_cast<SyncClientListener*>(arg)->connected(); }, arg);
+            obx_sync_listener_disconnect(
+                cPtr(), [](void* arg) { static_cast<SyncClientListener*>(arg)->disconnected(); }, arg);
+            obx_sync_listener_server_time(
+                cPtr(),
+                [](void* arg, int64_t timestampNs) {
+                    static_cast<SyncClientListener*>(arg)->serverTime(
+                        SyncClientTimeListener::TimePoint(std::chrono::nanoseconds(timestampNs)));
+                },
+                arg);
+            obx_sync_listener_change(
+                cPtr(),
+                [](void* arg, const OBX_sync_change_array* cChanges) {
+                    static_cast<SyncClientListener*>(arg)->changed(cChanges);
+                },
+                arg);
+        }
+    }
+
+protected:
+    OBX_sync* cPtr() const {
+        OBX_sync* ptr = cSync_;
+        if (ptr == nullptr) throw std::runtime_error("Sync client was already closed");
+        return ptr;
+    }
+
+    void removeLoginListener(bool evenIfEmpty = false) {
+        if (listeners_.login || evenIfEmpty) {
+            obx_sync_listener_login(cPtr(), nullptr, nullptr);
+            obx_sync_listener_login_failure(cPtr(), nullptr, nullptr);
+            listeners_.login.reset();
+        }
+    }
+
+    void removeCompletionListener(bool evenIfEmpty = false) {
+        if (listeners_.complete || evenIfEmpty) {
+            obx_sync_listener_complete(cPtr(), nullptr, nullptr);
+            listeners_.complete.reset();
+        }
+    }
+
+    void removeConnectionListener(bool evenIfEmpty = false) {
+        if (listeners_.connect || evenIfEmpty) {
+            obx_sync_listener_connect(cPtr(), nullptr, nullptr);
+            obx_sync_listener_disconnect(cPtr(), nullptr, nullptr);
+            listeners_.connect.reset();
+        }
+    }
+
+    void removeTimeListener(bool evenIfEmpty = false) {
+        if (listeners_.time || evenIfEmpty) {
+            obx_sync_listener_server_time(cPtr(), nullptr, nullptr);
+            listeners_.time.reset();
+        }
+    }
+
+    void removeChangeListener(bool evenIfEmpty = false) {
+        if (listeners_.change || evenIfEmpty) {
+            obx_sync_listener_change(cPtr(), nullptr, nullptr);
+            listeners_.change.reset();
+        }
+    }
+};
+
+/// <a href="https://objectbox.io/sync/">ObjectBox Sync</a> makes data available on other devices.
+/// Start building a sync client using client() and connect to a remote server.
+class Sync {
+public:
+    static bool isAvailable() { return obx_has_feature(OBXFeature_Sync); }
+
+    /// Creates a sync client associated with the given store and configures it with the given options.
+    /// This does not initiate any connection attempts yet: call SyncClient::start() to do so.
+    /// Before start(), you can still configure some aspects of the sync client, e.g. its "request update" mode.
+    /// @note While you may not interact with SyncClient directly after start(), you need to hold on to the object.
+    ///       Make sure the SyncClient is not destroyed and thus synchronization can keep running in the background.
+    static std::shared_ptr<SyncClient> client(Store& store, const std::string& serverUri,
+                                              const SyncCredentials& creds) {
+        std::lock_guard<std::mutex> lock(store.syncClientMutex_);
+        if (store.syncClient_) throw std::runtime_error("Only one sync client can be active for a store");
+        store.syncClient_.reset(new SyncClient(store, serverUri, creds));
+        return std::static_pointer_cast<SyncClient>(store.syncClient_);
+    }
+
+    /// Adopts an existing OBX_sync* sync client, taking ownership of the pointer.
+    /// @param cSync an initialized sync client. You must NOT call obx_sync_close() yourself anymore.
+    static std::shared_ptr<SyncClient> client(Store& store, OBX_sync* cSync) {
+        std::lock_guard<std::mutex> lock(store.syncClientMutex_);
+        if (store.syncClient_) throw std::runtime_error("Only one sync client can be active for a store");
+        store.syncClient_.reset(new SyncClient(store, cSync));
+        return std::static_pointer_cast<SyncClient>(store.syncClient_);
+    }
+};
+
+inline std::shared_ptr<SyncClient> Store::syncClient() {
+    std::lock_guard<std::mutex> lock(syncClientMutex_);
+    return std::static_pointer_cast<SyncClient>(syncClient_);
+}
+
+/**@}*/  // end of doxygen group
+}  // namespace obx

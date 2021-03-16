@@ -19,7 +19,7 @@
 
 #include <stdint.h>
 
-#include "objectbox.h"
+#include "objectbox-sync.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -67,6 +67,9 @@ OBX_dart_sync_listener* obx_dart_sync_listener_complete(OBX_sync* sync, int64_t 
 
 /// @see obx_sync_listener_change()
 OBX_dart_sync_listener* obx_dart_sync_listener_change(OBX_sync* sync, int64_t native_port);
+
+/// @see obx_sync_listener_server_time()
+OBX_dart_sync_listener* obx_dart_sync_listener_server_time(OBX_sync* sync, int64_t native_port);
 
 #ifdef __cplusplus
 }

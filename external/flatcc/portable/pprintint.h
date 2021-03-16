@@ -148,7 +148,7 @@ static int print_uint8(uint8_t n, char *p)
         p += 3;
         *p = '\0';
         __print_stage();
-        p[-1] = n + '0';
+        p[-1] = (char)n + '0';
         return 3;
     }
     if (n >= 10) {
@@ -158,7 +158,7 @@ static int print_uint8(uint8_t n, char *p)
         return 2;
     }
     p[1] = '\0';
-    p[0] = n + '0';
+    p[0] = (char)n + '0';
     return 1;
 }
 
@@ -185,7 +185,6 @@ static int print_uint16(uint16_t n, char *p)
     p += k;
     *p = '\0';
     if (k & 1) {
-        /* Fall through comments needed to silence gcc 7 warnings. */
         switch (k) {
         case 5:
             __print_stage();
@@ -194,10 +193,9 @@ static int print_uint16(uint16_t n, char *p)
             __print_stage();
 	    /* Fall through */
         case 1:
-            p[-1] = n + '0';
+            p[-1] = (char)n + '0';
         }
     } else {
-        /* Fall through comments needed to silence gcc 7 warnings. */
         switch (k) {
         case 4:
             __print_stage();
@@ -250,7 +248,6 @@ static int print_uint32(uint32_t n, char *p)
     p += k;
     *p = '\0';
     if (k & 1) {
-        /* Fall through comments needed to silence gcc 7 warnings. */
         switch (k) {
         case 9:
             __print_stage();
@@ -265,10 +262,9 @@ static int print_uint32(uint32_t n, char *p)
             __print_stage();
 	    /* Fall through */
         case 1:
-            p[-1] = n + '0';
+            p[-1] = (char)n + '0';
         }
     } else {
-        /* Fall through comments needed to silence gcc 7 warnings. */
         switch (k) {
         case 10:
             __print_stage();
@@ -392,7 +388,7 @@ static int print_int8(int8_t n, char *p)
         *p++ = '-';
         n = -n;
     }
-    return print_uint8(n, p) + sign;
+    return print_uint8((uint8_t)n, p) + sign;
 }
 
 static int print_int16(int16_t n, char *p)
@@ -403,7 +399,7 @@ static int print_int16(int16_t n, char *p)
         *p++ = '-';
         n = -n;
     }
-    return print_uint16(n, p) + sign;
+    return print_uint16((uint16_t)n, p) + sign;
 }
 
 static int print_int32(int32_t n, char *p)
@@ -414,7 +410,7 @@ static int print_int32(int32_t n, char *p)
         *p++ = '-';
         n = -n;
     }
-    return print_uint32(n, p) + sign;
+    return print_uint32((uint32_t)n, p) + sign;
 }
 
 static int print_int64(int64_t n, char *p)
@@ -425,7 +421,7 @@ static int print_int64(int64_t n, char *p)
         *p++ = '-';
         n = -n;
     }
-    return print_uint64(n, p) + sign;
+    return print_uint64((uint64_t)n, p) + sign;
 }
 
 #define __define_print_int_simple(NAME, UNAME, T, UT)                       \
@@ -453,7 +449,7 @@ static int UNAME(UT n, char *buf)                                           \
         *buf++ = *p++;                                                      \
     }                                                                       \
     *buf = '\0';                                                            \
-    return k;                                                               \
+    return (int)k;                                                          \
 }                                                                           \
                                                                             \
 static int NAME(T n, char *buf)                                             \

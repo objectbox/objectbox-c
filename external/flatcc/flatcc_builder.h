@@ -12,7 +12,7 @@ extern "C" {
  * languages.
  *
  * The builder has two API layers: a stack based `start/end` approach,
- * and a direct `create`, and they may be fixed freely. The direct
+ * and a direct `create`, and they may be mixed freely. The direct
  * approach may be used as part of more specialized optimizations such
  * as rewriting buffers while the stack approach is convenient for state
  * machine driven parsers without a stack, or with a very simple stack
@@ -41,7 +41,7 @@ extern "C" {
  * these references remain stable an may be used for external references
  * into the buffer.
  *
- * The maximum buffer than can be constructed is in praxis limited to
+ * The maximum buffer that can be constructed is in praxis limited to
  * half the UOFFSET_MAX size, typically 2^31 bytes, not counting
  * clustered vtables that may consume and additional 2^31 bytes
  * (positive address range), but in praxis cannot because vtable
@@ -71,7 +71,7 @@ extern "C" {
 
 /* It is possible to enable logging here. */
 #ifndef FLATCC_BUILDER_ASSERT
-#define FLATCC_BUILDER_ASSERT(cond, reason) assert(cond)
+#define FLATCC_BUILDER_ASSERT(cond, reason) FLATCC_ASSERT(cond)
 #endif
 
 /*
@@ -353,7 +353,7 @@ struct __flatcc_builder_frame {
         __flatcc_builder_table_frame_t table;
         __flatcc_builder_vector_frame_t vector;
         __flatcc_builder_buffer_frame_t buffer;
-    };
+    } container;
 };
 
 /**
@@ -1871,6 +1871,20 @@ void *flatcc_builder_aligned_alloc(size_t alignment, size_t size);
  * to the applications compile time flags.
  */
 void flatcc_builder_aligned_free(void *p);
+
+/*
+ * Same allocation as `flatcc_builder_finalize_buffer` returnes. Usually
+ * same as `malloc` but can redefined via macros.
+ */
+void *flatcc_builder_alloc(size_t size);
+
+/*
+ * A stable implementation of `free` when the default allocation
+ * methods have been redefined.
+ *
+ * Deallocates memory returned from `flatcc_builder_finalize_buffer`.
+ */
+void flatcc_builder_free(void *p);
 
 /*
  * Only for use with the default emitter.

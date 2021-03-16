@@ -11,7 +11,7 @@ box.put({.text = "Buy milk"});
 
 See [ObjectBox C and C++ docs](https://cpp.objectbox.io/) for API details.  
 
-**Latest version: 0.12.0** (2021-02-05).
+**Latest version: 0.13.0** (2021-03-16).
 See [changelog](CHANGELOG.md) for more details.
 
 Feature Highlights
@@ -89,7 +89,7 @@ Besides new features, there may be breaking changes requiring modifications to y
 * Linux 64-bit
 * Linux ARMv6hf (e.g. Raspberry PI Zero)
 * Linux ARMv7hf (e.g. Raspberry PI 3/4)
-* Linux ARMv8/AArch64 (e.g. Raspberry PI 3/4 with an 64 bit OS like Ubuntu)
+* Linux ARMv8/AArch64 (e.g. Raspberry PI 3/4 with a 64 bit OS like Ubuntu)
 * MacOS 64-bit
 * Windows 32-bit
 * Windows 64-bit

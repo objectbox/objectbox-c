@@ -14,7 +14,6 @@ extern "C" {
 
 #include <stdlib.h>
 #include <string.h>
-#include <assert.h>
 
 #include "flatcc/flatcc_rtconfig.h"
 #include "flatcc/flatcc_builder.h"
@@ -65,8 +64,8 @@ enum flatcc_json_parser_flags {
     XX(union_vector_length,     "union vector length mismatch")             \
     XX(base64,                  "invalid base64 content")                   \
     XX(base64url,               "invalid base64url content")                \
-    XX(array_underflow,         "fixed size array underflow")               \
-    XX(array_overflow,          "fixed size array overflow")                \
+    XX(array_underflow,         "fixed length array underflow")               \
+    XX(array_overflow,          "fixed length array overflow")                \
     XX(runtime,                 "runtime error")                            \
     XX(not_supported,           "not supported")
 
@@ -165,7 +164,7 @@ static inline const char *flatcc_json_parser_string_end(flatcc_json_parser_t *ct
 }
 
 /*
- * Parse a string as a fixed size char array as `s` with length `n`.
+ * Parse a string as a fixed length char array as `s` with length `n`.
  * and raise errors according to overflow/underflow runtime flags. Zero
  * and truncate as needed. A trailing zero is not inserted if the input
  * is at least the same length as the char array.
@@ -237,7 +236,7 @@ static inline const char *flatcc_json_parser_symbol_start(flatcc_json_parser_t *
 static inline uint64_t flatcc_json_parser_symbol_part_ext(const char *buf, const char *end)
 {
     uint64_t w = 0;
-    size_t n = end - buf;
+    size_t n = (size_t)(end - buf);
 
     if (n > 8) {
         n = 8;
@@ -293,7 +292,7 @@ static inline uint64_t flatcc_json_parser_symbol_part_ext(const char *buf, const
  */
 static inline uint64_t flatcc_json_parser_symbol_part(const char *buf, const char *end)
 {
-    size_t n = end - buf;
+    size_t n = (size_t)(end - buf);
 
 #if FLATCC_ALLOW_UNALIGNED_ACCESS
     if (n >= 8) {

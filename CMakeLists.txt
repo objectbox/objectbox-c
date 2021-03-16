@@ -11,60 +11,43 @@ if (${CMAKE_VERSION} VERSION_LESS "3.11.0")
 else ()
     project(objectbox-download)
 
-    # Configuration updated for each release
-    set(DL_VERSION 0.12.0)
-    set(DL_CHANNEL testing)
+    if (DEFINED ENV{OBJECTBOX_ARTIFACT_URL})
+        set(DL_URL $ENV{OBJECTBOX_ARTIFACT_URL})
+        message(STATUS "Using pre-compiled ObjectBox library from the OBJECTBOX_ARTIFACT_URL environment variable: ${DL_URL}")
+    else ()
+        # Configuration updated for each release
+        set(DL_VERSION 0.13.0)
 
-    # Platform detection and other setup
-    set(DL_URL https://dl.bintray.com/objectbox/conan/objectbox/objectbox-c)
+        # Platform detection and other setup
+        set(DL_URL https://github.com/objectbox/objectbox-c/releases/download)
 
-    # ${CMAKE_SYSTEM_PROCESSOR} is invalid on Windows, see https://gitlab.kitware.com/cmake/cmake/-/issues/15170
-    if (${CMAKE_SYSTEM_NAME} STREQUAL Windows)
-        if (CMAKE_SIZEOF_VOID_P MATCHES 8)
-            set(DL_PLATFORM ${CMAKE_SYSTEM_NAME}-x86_64)
+        # ${CMAKE_SYSTEM_PROCESSOR} is invalid on Windows, see https://gitlab.kitware.com/cmake/cmake/-/issues/15170
+        if (${CMAKE_SYSTEM_NAME} STREQUAL Windows)
+            if (CMAKE_SIZEOF_VOID_P MATCHES 8)
+                set(DL_PLATFORM ${CMAKE_SYSTEM_NAME}-x64)
+            else ()
+                set(DL_PLATFORM ${CMAKE_SYSTEM_NAME}-x86)
+            endif ()
+        elseif (${CMAKE_SYSTEM_PROCESSOR} STREQUAL x86_64)
+            set(DL_PLATFORM ${CMAKE_SYSTEM_NAME}-x64)
         else ()
-            set(DL_PLATFORM ${CMAKE_SYSTEM_NAME}-x86)
+            set(DL_PLATFORM ${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR})
         endif ()
-    else ()
-        set(DL_PLATFORM ${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR})
-    endif ()
 
-    if (${DL_PLATFORM} STREQUAL Linux-x86_64)
-        set(DL_PACKAGE 4db1be536558d833e52e862fd84d64d75c2b3656)
+        if (${DL_PLATFORM} MATCHES "^Linux-armv7")
+            set(DL_PLATFORM "Linux-armv7hf") # show what we actually download
+        elseif (${DL_PLATFORM} MATCHES "^Linux-armv6")
+            set(DL_PLATFORM "Linux-armv6hf") # show what we actually download
+        endif ()
 
-    elseif (${DL_PLATFORM} MATCHES "^Linux-aarch64")
-        # Note: aarch64 is how a 64-bit ARMv8 is reported.
-        # Also, we don't match armv8 because we haven't seen it yet and also that "-R" and "-M: variants are 32-bit.
-        set(DL_PACKAGE b0bab81756b4971d42859e9b1bc6f8b3fa8e036e)
-
-    elseif (${DL_PLATFORM} MATCHES "^Linux-armv7")
-        set(DL_PACKAGE d42930899c74345edc43f8b7519ec7645c13e4d8)
-        set(DL_PLATFORM "Linux-armv7hf") # show what we actually download
-
-    elseif (${DL_PLATFORM} MATCHES "^Linux-armv6")
-        set(DL_PACKAGE 4a625f0bd5f477eacd9bd35e9c44c834d057524b)
-        set(DL_PLATFORM "Linux-armv6hf") # show what we actually download
-
-    elseif (${DL_PLATFORM} STREQUAL Darwin-x86_64)
-        set(DL_PACKAGE 46f53f156846659bf39ad6675fa0ee8156e859fe)
-
-    elseif (${DL_PLATFORM} STREQUAL Windows-x86_64)
-        set(DL_PACKAGE ca33edce272a279b24f87dc0d4cf5bbdcffbc187)
-
-    elseif (${DL_PLATFORM} STREQUAL Windows-x86)
-        set(DL_PACKAGE 11e6a84a7894f41df553e7c92534c3bf26896802)
-
-    else ()
-        message(FATAL_ERROR "Can't download pre-compiled ObjectBox library - platform not supported: ${DL_PLATFORM}")
+        string(TOLOWER ${DL_PLATFORM} DL_PLATFORM)
+        set(DL_URL ${DL_URL}/v${DL_VERSION}/objectbox-${DL_PLATFORM}.tar.gz)
+        message(STATUS "Using pre-compiled ObjectBox library v${DL_VERSION} for ${DL_PLATFORM}: ${DL_URL}")
     endif ()
 
     include(FetchContent)
-    FetchContent_Declare(
-            ${PROJECT_NAME}
-            URL ${DL_URL}/${DL_VERSION}/${DL_CHANNEL}/0/package/${DL_PACKAGE}/0/conan_package.tgz
-    )
+    FetchContent_Declare(${PROJECT_NAME} URL ${DL_URL})
 
-    message(STATUS "Using pre-compiled ObjectBox library version ${DL_CHANNEL}:${DL_VERSION} for ${DL_PLATFORM}")
     FetchContent_Populate(${PROJECT_NAME})
     message(STATUS "Pre-compiled ObjectBox library is saved in ${objectbox-download_SOURCE_DIR}")
 

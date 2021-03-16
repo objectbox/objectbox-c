@@ -10,6 +10,10 @@ extern "C" {
  * which is. Therefore, to remain portable, end user code needs to
  * use `aligned_free` which is not part of C11 but defined in this header.
  *
+ * glibc only provides aligned_alloc when _ISOC11_SOURCE is defined, but
+ * MingW does not support aligned_alloc despite of this, it uses the
+ * the _aligned_malloc as MSVC.
+ *
  * The same issue is present on some Unix systems not providing
  * posix_memalign.
  *
@@ -41,8 +45,16 @@ extern "C" {
 
 #if !defined(PORTABLE_C11_ALIGNED_ALLOC)
 
-#if defined (_ISOC11_SOURCE)
-/* glibc aligned_alloc detection. */
+/*
+ * PORTABLE_C11_ALIGNED_ALLOC = 1
+ * indicates that the system has builtin aligned_alloc
+ * If it doesn't, the section after detection provides an implemention.
+ */
+#if defined (__MINGW32__)
+/* MingW does not provide aligned_alloc despite defining _ISOC11_SOURCE */
+#define PORTABLE_C11_ALIGNED_ALLOC 0
+#elif defined (_ISOC11_SOURCE) 
+/* glibc aligned_alloc detection, but MingW is not truthful */
 #define PORTABLE_C11_ALIGNED_ALLOC 1
 #elif defined (__GLIBC__)
 /* aligned_alloc is not available in glibc just because __STDC_VERSION__ >= 201112L. */
@@ -60,17 +72,30 @@ extern "C" {
 #endif /* PORTABLE_C11_ALIGNED_ALLOC */
 
 /* https://linux.die.net/man/3/posix_memalign */
-#if !defined(PORTABLE_POSIX_MEMALIGN)
+#if !defined(PORTABLE_POSIX_MEMALIGN) && defined(_GNU_SOURCE)
+#define PORTABLE_POSIX_MEMALIGN 1
+#endif
 
 /* https://forum.kde.org/viewtopic.php?p=66274 */
-#if (defined _GNU_SOURCE) || ((_XOPEN_SOURCE + 0) >= 600) || (_POSIX_C_SOURCE + 0) >= 200112L 
+#if !defined(PORTABLE_POSIX_MEMALIGN) && defined(_XOPEN_SOURCE)
+#if _XOPEN_SOURCE >= 600
 #define PORTABLE_POSIX_MEMALIGN 1
-#elif defined (__clang__)
+#endif
+#endif
+
+#if !defined(PORTABLE_POSIX_MEMALIGN) && defined(_POSIX_C_SOURCE)
+#if _POSIX_C_SOURCE >= 200112L
 #define PORTABLE_POSIX_MEMALIGN 1
-#else
+#endif
+#endif
+
+#if !defined(PORTABLE_POSIX_MEMALIGN) && defined(__clang__)
+#define PORTABLE_POSIX_MEMALIGN 1
+#endif
+
+#if !defined(PORTABLE_POSIX_MEMALIGN)
 #define PORTABLE_POSIX_MEMALIGN 0
 #endif
-#endif /* PORTABLE_POSIX_MEMALIGN */
 
 /* https://forum.kde.org/viewtopic.php?p=66274 */
 #if (defined(__STDC__) && __STDC__ && defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L)
@@ -85,7 +110,11 @@ extern "C" {
 #ifdef PORTABLE_DEBUG_ALIGNED_ALLOC
 #error "DEBUG: C11_ALIGNED_ALLOC configured"
 #endif
-#elif defined(_MSC_VER)
+#elif defined(_MSC_VER) || defined(__MINGW32__)
+
+#ifdef PORTABLE_DEBUG_ALIGNED_ALLOC
+#error "DEBUG: Windows _aligned_malloc configured"
+#endif
 
 /* Aligned _aligned_malloc is not compatible with free. */
 #define aligned_alloc(alignment, size) _aligned_malloc(size, alignment)
@@ -95,8 +124,12 @@ extern "C" {
 
 #elif PORTABLE_POSIX_MEMALIGN
 
-#if defined(__GNUC__) && __GNUCC__ < 5
+#if defined(__GNUC__)
+#if !defined(__GNUCC__)
 extern int posix_memalign (void **, size_t, size_t);
+#elif __GNUCC__ < 5
+extern int posix_memalign (void **, size_t, size_t);
+#endif
 #endif
 
 static inline void *__portable_aligned_alloc(size_t alignment, size_t size)

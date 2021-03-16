@@ -35,7 +35,6 @@ extern "C" {
 #endif
 
 #include <stdlib.h>
-#include <assert.h>
 #include <limits.h>
 
 #include "grisu3_math.h"
@@ -77,16 +76,16 @@ static int grisu3_diy_fp_cached_dec_pow(int d_exp, grisu3_diy_fp_t *p)
     const int d_exp_dist = GRISU3_CACHED_EXP_STEP;
     int i, a_exp;
 
-    assert(GRISU3_MIN_CACHED_EXP <= d_exp);
-    assert(d_exp <  GRISU3_MAX_CACHED_EXP + d_exp_dist);
+    GRISU3_ASSERT(GRISU3_MIN_CACHED_EXP <= d_exp);
+    GRISU3_ASSERT(d_exp <  GRISU3_MAX_CACHED_EXP + d_exp_dist);
 
     i = (d_exp + cached_offset) / d_exp_dist;
     a_exp = grisu3_diy_fp_pow_cache[i].d_exp;
     p->f = grisu3_diy_fp_pow_cache[i].fract;
     p->e = grisu3_diy_fp_pow_cache[i].b_exp;
 
-    assert(a_exp <= d_exp);
-    assert(d_exp < a_exp + d_exp_dist);
+    GRISU3_ASSERT(a_exp <= d_exp);
+    GRISU3_ASSERT(d_exp < a_exp + d_exp_dist);
 
     return a_exp;
 }
@@ -182,7 +181,7 @@ static int grisu3_diy_fp_encode_double(uint64_t fraction, int exponent, int frac
             { 0xf424000000000000ULL, -44 },
             { 0x9896800000000000ULL, -40 },
         };
-        assert(adj_exp >= 0 && adj_exp < 7);
+        GRISU3_ASSERT(adj_exp >= 0 && adj_exp < 7);
         v = grisu3_diy_fp_multiply(v, cp_10_lut[adj_exp]);
 
         /* 20 decimal digits won't always fit in 64 bit.
@@ -239,8 +238,8 @@ static int grisu3_diy_fp_encode_double(uint64_t fraction, int exponent, int frac
     }
     rounded.f = v.f >> prec;
     rounded.e = v.e + prec;
-    prec_bits = (v.f & ((uint64_t)1 << (prec - 1))) * error_one;
-    half_way = ((uint64_t)1 << (prec - 1)) * error_one;
+    prec_bits = (int)(v.f & ((uint64_t)1 << (prec - 1))) * error_one;
+    half_way = (int)((uint64_t)1 << (prec - 1)) * error_one;
     if (prec >= half_way + error) {
         rounded.f++;
         /* Prevent overflow. */
@@ -397,7 +396,7 @@ static const char *grisu3_parse_hex_fp(const char *buf, const char *end, int sig
  * sign is not allowed and space after the sign is not allowed.
  * At most the first 1000 characters of the input is considered.
  */
-static const char *grisu3_parse_double(const char *buf, int len, double *result)
+static const char *grisu3_parse_double(const char *buf, size_t len, double *result)
 {
     const char *mark, *k, *end;
     int sign = 0, esign = 0;
@@ -449,7 +448,7 @@ static const char *grisu3_parse_double(const char *buf, int len, double *result)
              */
             return sign ? 0 : mark;
         }
-        fraction = *buf++ - '0';
+        fraction = (uint64_t)(*buf++ - '0');
     }
     k = buf;
     /*
@@ -464,7 +463,7 @@ static const char *grisu3_parse_double(const char *buf, int len, double *result)
             ulp_half_error = 1;
             break;
         }
-        fraction = fraction * 10 + *buf++ - '0';
+        fraction = fraction * 10 + (uint64_t)(*buf++ - '0');
     }
     fraction_exp = (int)(buf - k);
     /* Skip surplus digits. Trailing zero does not introduce error. */
@@ -496,7 +495,7 @@ static const char *grisu3_parse_double(const char *buf, int len, double *result)
                 }
                 break;
             }
-            fraction = fraction * 10 + *buf++ - '0';
+            fraction = fraction * 10 + (uint64_t)(*buf++ - '0');
             --exponent;
         }
         fraction_exp += (int)(buf - k);

@@ -182,8 +182,8 @@ if [ -z "$( awk -v key="${conf}" '$1 == key {print $NF}' <<< "$SUPPORTED_PLATFOR
 fi
 
 targetDir="${downloadDir}/${version}-${conf}"
-archiveFile="${targetDir}.tar.gz"
-downloadUrl="https://github.com/objectbox/objectbox-c/releases/download/v${version}/objectbox-${conf}.tar.gz"
+archiveFile="${targetDir}.zip"
+downloadUrl="https://github.com/objectbox/objectbox-c/releases/download/v${version}/objectbox-${conf}.zip"
 echo "Resolved URL: ${downloadUrl}"
 echo "Downloading ObjectBox library version v${version} for ${conf}..."
 mkdir -p "$(dirname "${archiveFile}")"
@@ -206,7 +206,7 @@ du -h "${archiveFile}"
 echo
 echo "Extracting into ${targetDir}..."
 mkdir -p "${targetDir}"
-tar -xzf "${archiveFile}" -C "${targetDir}"
+unzip "${archiveFile}" -d "${targetDir}"
 
 if [ ! -d "${libBuildDir}"  ] || ${quiet} ; then
     mkdir -p "${libBuildDir}"

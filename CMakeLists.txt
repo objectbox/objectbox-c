@@ -41,7 +41,7 @@ else ()
         endif ()
 
         string(TOLOWER ${DL_PLATFORM} DL_PLATFORM)
-        set(DL_URL ${DL_URL}/v${DL_VERSION}/objectbox-${DL_PLATFORM}.tar.gz)
+        set(DL_URL ${DL_URL}/v${DL_VERSION}/objectbox-${DL_PLATFORM}.zip)
         message(STATUS "Using pre-compiled ObjectBox library v${DL_VERSION} for ${DL_PLATFORM}: ${DL_URL}")
     endif ()
 

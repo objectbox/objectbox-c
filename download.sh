@@ -42,16 +42,15 @@ tty -s || quiet=true
 version=${1:-0.13.0}
 os=${2:-$(uname)}
 arch=${3:-$(uname -m)}
-echo "Base config: OS ${os} and arch ${arch}"
+echo "Base config: OS ${os} and architecture ${arch}"
 
 if [[ "$os" == MINGW* ]] || [[ "$os" == CYGWIN* ]]; then
-    echo "Adjusted OS to Windows"
     os=Windows
-fi
-
-if [[ "$os" == "Darwin" ]]; then
-    echo "Adjusted OS to Mac"
-    os=Mac
+    echo "Adjusted OS to $os"
+elif [[ "$os" == "Darwin" ]]; then
+    os=MacOS
+    arch=universal
+    echo "Adjusted OS to $os and architecture to $arch"
 fi
 
 if [[ $arch == "x86_64" ]]; then
@@ -76,7 +75,7 @@ fi
 # original location where we installed in previous versions of this script
 oldLibDir=
 
-if [[ "$os" = "Mac" ]]; then
+if [[ "$os" = "MacOS" ]]; then
     libFileName=libobjectbox.dylib
     libDirectory=/usr/local/lib
 elif [[ "$os" = "Windows" ]]; then
@@ -170,7 +169,7 @@ linux-armv7
 linux-aarch64
 windows-x86
 windows-x64
-mac-x64
+macos-universal
 " #SUPPORTED_PLATFORMS
 if [ -z "$( awk -v key="${conf}" '$1 == key {print $NF}' <<< "$SUPPORTED_PLATFORMS" )" ]; then
     echo "Warning: platform configuration ${conf} is not listed as supported."
@@ -181,9 +180,15 @@ if [ -z "$( awk -v key="${conf}" '$1 == key {print $NF}' <<< "$SUPPORTED_PLATFOR
     exit 1
 fi
 
-targetDir="${downloadDir}/${version}-${conf}"
-archiveFile="${targetDir}.zip"
-downloadUrl="https://github.com/objectbox/objectbox-c/releases/download/v${version}/objectbox-${conf}.zip"
+if [[ $conf = linux-*  ]]; then
+  archiveExt=tar.gz
+else
+  archiveExt=zip
+fi
+
+targetDir="${downloadDir}/objectbox-${version}-${conf}"
+archiveFile="${targetDir}.${archiveExt}"
+downloadUrl="https://github.com/objectbox/objectbox-c/releases/download/v${version}/objectbox-${conf}.${archiveExt}"
 echo "Resolved URL: ${downloadUrl}"
 echo "Downloading ObjectBox library version v${version} for ${conf}..."
 mkdir -p "$(dirname "${archiveFile}")"
@@ -206,7 +211,12 @@ du -h "${archiveFile}"
 echo
 echo "Extracting into ${targetDir}..."
 mkdir -p "${targetDir}"
-unzip "${archiveFile}" -d "${targetDir}"
+
+if [[ "$archiveExt" == "zip" ]]; then
+  unzip "${archiveFile}" -d "${targetDir}"
+else
+  tar -xzf "${archiveFile}" -C "${targetDir}"
+fi
 
 if [ ! -d "${libBuildDir}"  ] || ${quiet} ; then
     mkdir -p "${libBuildDir}"

@@ -21,8 +21,12 @@ else ()
         # Platform detection and other setup
         set(DL_URL https://github.com/objectbox/objectbox-c/releases/download)
 
-        # ${CMAKE_SYSTEM_PROCESSOR} is invalid on Windows, see https://gitlab.kitware.com/cmake/cmake/-/issues/15170
-        if (${CMAKE_SYSTEM_NAME} STREQUAL Windows)
+        set(DL_EXTENSION "tar.gz")
+        if (${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
+            set(DL_PLATFORM "MacOS-universal")
+            set(DL_EXTENSION "zip")
+        elseif (${CMAKE_SYSTEM_NAME} STREQUAL Windows)
+            set(DL_EXTENSION "zip")
             if (CMAKE_SIZEOF_VOID_P MATCHES 8)
                 set(DL_PLATFORM ${CMAKE_SYSTEM_NAME}-x64)
             else ()
@@ -41,7 +45,7 @@ else ()
         endif ()
 
         string(TOLOWER ${DL_PLATFORM} DL_PLATFORM)
-        set(DL_URL ${DL_URL}/v${DL_VERSION}/objectbox-${DL_PLATFORM}.zip)
+        set(DL_URL ${DL_URL}/v${DL_VERSION}/objectbox-${DL_PLATFORM}.${DL_EXTENSION})
         message(STATUS "Using pre-compiled ObjectBox library v${DL_VERSION} for ${DL_PLATFORM}: ${DL_URL}")
     endif ()
 

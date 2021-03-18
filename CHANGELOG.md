@@ -3,6 +3,8 @@ ObjectBox C and C++ API Changelog
 
 0.13.0 (2021-03-16)
 -------------------
+* add Sync binary library variants for all supported platforms
+* add MacOS universal binary library, supporting Intel x64 and Apple Silicon arm64
 * split Sync symbols out of objectbox.h/pp into objectbox-sync.h/pp 
 * add Sync server-time getter, listener and local-to-server diff info - to access server time info on clients 
 * add Sync heartbeat interval configuration and an option to send one immediately

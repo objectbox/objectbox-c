@@ -25,7 +25,7 @@
 #include <optional>
 #endif
 
-static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 12 && OBX_VERSION_PATCH == 0,
+static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 13 && OBX_VERSION_PATCH == 0,
               "Versions of objectbox.h and objectbox.hpp files must be exactly the same");
 
 static_assert(sizeof(obx_id) == sizeof(OBX_id_array::ids[0]),

@@ -14,6 +14,7 @@ set -eu
 quiet=false
 printHelp=false
 libBuildDir="$(pwd)/lib"
+variant=
 ###
 
 case ${1:-} in
@@ -31,6 +32,10 @@ case ${1:-} in
     ;;
 --uninstall)
     uninstallLibrary=true
+    shift
+    ;;
+--sync)
+    variant="sync-"
     shift
     ;;
 esac
@@ -62,9 +67,6 @@ elif [[ $arch == armv6* ]]; then
     arch=armv6hf
     echo "Selected ${arch} architecture for download (hard FP only!)"
 fi
-
-conf=$(echo "${os}-${arch}" | tr '[:upper:]' '[:lower:]')   # convert to lowercase
-echo "Using configuration ${conf}"
 
 # sudo might not be defined (e.g. when building a docker image)
 sudo="sudo"
@@ -162,6 +164,8 @@ do
    esac
 done
 
+conf=$(echo "${os}-${arch}" | tr '[:upper:]' '[:lower:]')   # convert to lowercase
+
 SUPPORTED_PLATFORMS="
 linux-x64
 linux-armv6
@@ -180,7 +184,10 @@ if [ -z "$( awk -v key="${conf}" '$1 == key {print $NF}' <<< "$SUPPORTED_PLATFOR
     exit 1
 fi
 
-if [[ $conf = linux-*  ]]; then
+conf="${variant}${conf}"
+echo "Using configuration ${conf}"
+
+if [[ "$os" == "Linux"  ]]; then
   archiveExt=tar.gz
 else
   archiveExt=zip

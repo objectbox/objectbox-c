@@ -17,28 +17,28 @@ libBuildDir="$(pwd)/lib"
 variant=
 ###
 
-case ${1:-} in
--h|--help)
-    printHelp=true
-    ;;
---quiet)
-    quiet=true
+while :; do
+    case ${1:-} in
+        -h|--help)
+          printHelp=true
+        ;;
+        --quiet)
+          quiet=true
+        ;;
+        --install)
+          quiet=true
+          installLibrary=true
+        ;;
+        --uninstall)
+          uninstallLibrary=true
+        ;;
+        --sync)
+          variant="sync-"
+        ;;
+        *) break
+    esac
     shift
-    ;;
---install)
-    quiet=true
-    installLibrary=true
-    shift
-    ;;
---uninstall)
-    uninstallLibrary=true
-    shift
-    ;;
---sync)
-    variant="sync-"
-    shift
-    ;;
-esac
+done
 
 tty -s || quiet=true
 
@@ -103,6 +103,7 @@ function printUsage() {
     echo "download.sh [\$1:version] [\$2:os] [\$3:arch]"
     echo
     echo "  Options (use at front only):"
+    echo "    --sync: download ObjectBox Sync variant of the library"
     echo "    --quiet: skipping asking to install to ${libDirectory}"
     echo "    --install: install library to ${libDirectory}"
     echo "    --uninstall: uninstall from ${libDirectory}"

@@ -168,8 +168,8 @@ conf=$(echo "${os}-${arch}" | tr '[:upper:]' '[:lower:]')   # convert to lowerca
 
 SUPPORTED_PLATFORMS="
 linux-x64
-linux-armv6
-linux-armv7
+linux-armv6hf
+linux-armv7hf
 linux-aarch64
 windows-x86
 windows-x64

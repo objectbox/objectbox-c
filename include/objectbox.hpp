@@ -25,8 +25,8 @@
 #include <optional>
 #endif
 
-static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 13 && OBX_VERSION_PATCH == 0,
-              "Versions of objectbox.h and objectbox.hpp files must be exactly the same");
+static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 14 && OBX_VERSION_PATCH == 0,
+              "Versions of objectbox.h and objectbox.hpp files do not match, please update");
 
 static_assert(sizeof(obx_id) == sizeof(OBX_id_array::ids[0]),
               "Can't directly link OBX_id_array.ids to std::vector<obx_id>::data()");
@@ -1396,6 +1396,30 @@ public:
         return std::move(visitor.items);
     }
 
+    /// Find the first object matching the query or nullptr if none matches.
+    std::unique_ptr<EntityT> findFirst() {
+        return findSingle<std::unique_ptr<EntityT>>(obx_query_find_first, EntityT::_OBX_MetaInfo::newFromFlatBuffer);
+    }
+
+    /// Find the only object matching the query.
+    /// @throws if there are multiple objects matching the query
+    std::unique_ptr<EntityT> findUnique() {
+        return findSingle<std::unique_ptr<EntityT>>(obx_query_find_unique, EntityT::_OBX_MetaInfo::newFromFlatBuffer);
+    }
+
+#ifdef __cpp_lib_optional
+    /// Find the first object matching the query or nullptr if none matches.
+    std::optional<EntityT> findFirstOptional() {
+        return findSingle<std::optional<EntityT>>(obx_query_find_first, EntityT::_OBX_MetaInfo::fromFlatBuffer);
+    }
+
+    /// Find the only object matching the query.
+    /// @throws if there are multiple objects matching the query
+    std::optional<EntityT> findUniqueOptional() {
+        return findSingle<std::optional<EntityT>>(obx_query_find_unique, EntityT::_OBX_MetaInfo::fromFlatBuffer);
+    }
+#endif
+
     /// Returns IDs of all matching objects.
     std::vector<obx_id> findIds() { return idVectorOrThrow(obx_query_find_ids(cQuery_)); }
 
@@ -1523,6 +1547,19 @@ public:
     Query& setParameter(Property<PropertyEntityT, OBXPropertyType_ByteVector> property,
                         const std::vector<uint8_t>& value) {
         return setParameter(property, value.data(), value.size());
+    }
+
+private:
+    template <typename RET, typename T>
+    RET findSingle(obx_err nativeFn(OBX_query*, const void**, size_t*), T fromFlatBuffer(const void*, size_t)) {
+        OBJECTBOX_VERIFY_STATE(cQuery_ != nullptr);
+        Transaction tx = store_.txRead();
+        const void* data;
+        size_t size;
+        obx_err err = nativeFn(cQuery_, &data, &size);
+        if (err == OBX_NOT_FOUND) return RET();
+        checkErrOrThrow(err);
+        return fromFlatBuffer(data, size);
     }
 };
 
@@ -2023,22 +2060,7 @@ public:
     /// @return the reserved ID which will be used for the object if the asynchronous insert succeeds.
     obx_id put(const EntityT& object, OBXPutMode mode = OBXPutMode_PUT) {
         EntityBinding::toFlatBuffer(fbb, object);
-        obx_id id;
-        switch (mode) {
-            case OBXPutMode_PUT:
-                id = obx_async_put_object(cPtr(), fbb.GetBufferPointer(), fbb.GetSize());
-                break;
-            case OBXPutMode_INSERT:
-                id = obx_async_insert_object(cPtr(), fbb.GetBufferPointer(), fbb.GetSize());
-                break;
-            case OBXPutMode_UPDATE:
-                // TODO this looks like we should adjust the the C API...
-                throw std::invalid_argument(
-                    "UPDATE mode is currently not supported in C++ API AsyncBox, because C-API requires providing an "
-                    "ID. Use C-API directly.");
-            default:
-                throw std::invalid_argument("unknown mode");
-        }
+        obx_id id = obx_async_put_object4(cPtr(), fbb.GetBufferPointer(), fbb.GetSize(), mode);
         fbbCleanAfterUse();
         if (id == 0) throwLastError();
         return id;

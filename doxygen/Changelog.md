@@ -3,10 +3,24 @@
 ObjectBox C and C++ API Changelog
 =================================
 
+0.14.0 (2021-05-13)
+-------------------
+
+* change `obx_query_prop_count()` to respect case-sensitivity setting when counting distinct strings
+* change `OBXSyncCredentialsType` values to start at 1
+* add `obx_query_find_first()` to get a first object matching the query
+* add `obx_query_find_unique()` to get the only object matching the query
+* add `obx_async_put_object4()` accepting a put_mode
+* updated ARMv7hf toolchain, now requires GLIBC v2.28 (e.g. Raspbian 10, Ubuntu 20.04)
+* semi-internal Dart APIs: add query streaming and finalizers
+
 0.13.0 (2021-03-16)
 -------------------
-* split Sync symbols out of objectbox.h/pp into objectbox-sync.h/pp 
-* add Sync server-time getter, listener and local-to-server diff info - to access server time info on clients 
+
+* add Sync binary library variants for all supported platforms
+* add MacOS universal binary library, supporting Intel x64 and Apple Silicon arm64
+* split Sync symbols out of objectbox.h/pp into objectbox-sync.h/pp
+* add Sync server-time getter, listener and local-to-server diff info - to access server time info on clients
 * add Sync heartbeat interval configuration and an option to send one immediately
 * semi-internal: update Dart/Flutter SDK to v2.0
 

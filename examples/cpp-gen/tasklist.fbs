@@ -1,4 +1,3 @@
-/// objectbox:sync
 table Task {
     id: ulong;
     text: string;

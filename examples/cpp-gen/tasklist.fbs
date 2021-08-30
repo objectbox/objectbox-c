@@ -4,8 +4,9 @@ table Task {
     text: string;
 
     /// objectbox:date
-    date_created: ulong;
+    date_created: long;
 
     /// objectbox:date
-    date_finished: ulong;
+    date_finished: long;
+
 }

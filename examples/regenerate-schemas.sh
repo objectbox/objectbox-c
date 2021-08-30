@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Adjust to your local paths if you don't have it in your system path
 flatcc=flatcc
 obxgen=objectbox-generator
 
-${flatcc} --version
+${flatcc} --version || true
 ${obxgen} -version
 
 (
   cd c-cursor-no-gen
-  ${flatcc} --common --builder task.fbs
+  ${flatcc} --common --builder task.fbs || echo "  >> Warning: without flatcc, you cannot generate plain C sources <<"
 )
 
 (

@@ -23,5 +23,5 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
         CXX_STANDARD 11
         CXX_STANDARD_REQUIRED YES
         )
-target_link_libraries(${PROJECT_NAME} objectbox)
+target_link_libraries(${PROJECT_NAME} objectbox-sync) # note: using the lib that includes the Sync client
 target_include_directories(${PROJECT_NAME} PRIVATE ../../include ../../external)

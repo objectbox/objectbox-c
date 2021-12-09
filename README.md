@@ -1,6 +1,7 @@
-ObjectBox C and C++ APIs
+ObjectBox Embedded C / C++ Database for Embedded Devices, IoT & Mobile
 ========================
-[ObjectBox](https://objectbox.io) is a superfast database and data synchronization solution.
+[ObjectBox](https://objectbox.io) is a superfast C / C++ database for embedded devices (Mobile and IoT), with out-of-the-box [Data Sync](https://objectbox.io/sync/) to keep data in sync across devices and any kind of backend / cloud reliably for occassionally connected devices. ObectBox Data Persistence and Data Snyc follows an offline-first aproach and can be used on-premise as well as with a cloud setup.
+
 This is the **ObjectBox runtime library** to run ObjectBox as an embedded database in your C or C++ application.
 
 Here's a C++ example that inserts a `Task` data object (a plain user defined `struct`) into the database: 
@@ -16,16 +17,19 @@ See [changelog](CHANGELOG.md) for more details.
 
 Feature Highlights
 ------------------
-🏁 **High performance:** improving response rates and enabling real-time applications.\
-🪂 **ACID compliance:** Atomic, Consistent, Isolated, Durable.\
-🔗 **Relations:** object links / relationships are built-in.\
-🌱 **Scalable:** grows with your needs, handling millions of objects with ease.\
-💐 **Queries:** filter data as needed, even across relations.\
-🦮 **Statically typed:** compile time checks & optimizations.\
-💻 **Multiplatform:** Linux, Windows, Android, iOS, macOS.\
-📃 **Automatic schema migrations:** no update scripts needed.\
-👥 **[ObjectBox Sync](https://objectbox.io/sync/):** keeps data in sync between devices and servers.\
-🕒 **[ObjectBox TS](https://objectbox.io/time-series-database/):** time series extension for time based data.
+🏁 **High performance** on restricted devices, like IoT gateways, micro controllers, ECUs etc.\
+🪂 **Resourceful** with minimal CPU, power and Memory usage for maximum flexibility and sustainability\
+🔗 **Relations:** object links / relationships are built-in\
+💻 **Multiplatform:** Linux, Windows, Android, iOS, macOS
+
+🌱 **Scalable:** handling millions of objects resource-efficiently with ease\
+💐 **Queries:** filter data as needed, even across relations\
+🦮 **Statically typed:** compile time checks & optimizations\
+📃 **Automatic schema migrations:** no update scripts needed
+
+
+👥 **[ObjectBox Sync](https://objectbox.io/sync/):** keeps data in sync between devices and servers\
+🕒 **[ObjectBox TS](https://objectbox.io/time-series-database/):** time series extension for time based data
 
 And some more technical details:
 
@@ -35,7 +39,7 @@ And some more technical details:
 * Flex type to represent any FlexBuffers
 * Secondary indexes based on object properties
 * Async API for asynchronous puts, inserts, updates, removes
-* Optimized Time series types (TS edition only)
+* Optimized for time series data (TS edition only)
 * Data synchronization across the network (sync edition only)
 
 Usage and Installation

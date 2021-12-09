@@ -1351,7 +1351,9 @@ OBX_C_API obx_qb_cond obx_qb_any(OBX_query_builder* builder, const obx_qb_cond c
 /// Create an alias for the previous condition (the one added just before calling this function).
 /// This is useful when you have a query with multiple conditions of the same property (e.g. height < 20 or height > 50)
 /// and you want to use obx_query_param_* to change the values. Consider the following simplified example.
-/// @example Create a query with two aliased params and set their values later during query execution:
+///
+/// **Example:** Create a query with two aliased params and set their values later during query execution:
+///
 ///          OBX_query_builder* qb = obx_query_builder(store, entity_id);
 ///          obx_qb_less_than_int(qb, height_prop_id, 0)
 ///          obx_qb_param_alias(qb, "height-lt")

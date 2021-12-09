@@ -1269,7 +1269,9 @@ public:
         : QueryBuilder(store, obx_query_builder(store.cPtr(), EntityBinding::entityId()), true) {}
 
     /// Take ownership of an OBX_query_builder.
-    /// @example
+    ///
+    /// *Example:**
+    ///
     ///          QueryBuilder innerQb(obx_qb_link_property(outerQb.cPtr(), linkPropertyId), false)
     explicit QueryBuilder(Store& store, OBX_query_builder* ptr, bool isRoot)
         : store_(store), cQueryBuilder_(ptr), isRoot_(isRoot) {
@@ -1831,7 +1833,9 @@ public:
     /// @param toOneRel the relation property, which must belong to the entity type represented by this box.
     /// @param objectId this relation points to - typically ID of an object of another entity type (another box).
     /// @returns resulting IDs representing objects in this Box, or NULL in case of an error
-    /// @example Let's say you have the following two entities with a relation between them (.fbs file format):
+    ///
+    /// **Example** Let's say you have the following two entities with a relation between them (.fbs file format):
+    ///
     ///          table Customer {
     ///              id:ulong;
     ///              name:string;

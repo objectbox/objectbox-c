@@ -3,9 +3,31 @@
 ObjectBox C and C++ API Changelog
 =================================
 
+0.15.0 (2021-12-09)
+-------------------
+* New "Flex" data type that can contain data of various types like integers, floating points, strings, lists and maps 
+* New query conditions for Flex lists to find a specific element
+* New query conditions for Flex maps to find elements with a specific key or key/value pair
+* New unique on-conflict strategy: replace conflicting objects (OBXPropertyFlags_UNIQUE_ON_CONFLICT_REPLACE)
+* New functions to attach to existing stores using only the file path (in the same process)
+* New APIs for ObjectBox Admin, the web based UI (formerly known as Object Browser): obx_admin_*
+* Minor performance improvements for indexed access
+* Major performance improvements for tree/GraphQL queries
+* ARM binaries are now built for minimal size reducing the library size significantly
+* New "no_reader_thread_locals" store option
+* Enable debug logging (requires a special build)
+* API: Type for query offsets and limits was changed from uint64_t to size_t
+* API: rarely used obx_txn_mark_success() was removed; use obx_txn_success()
+* API: feature checks consolidated to only use obx_has_feature()
+* Many internal improvements
+* Core version 3.0.1-2021-12-09
+
+### Sync
+
+* New API for embedded server mode: obx_sync_server_* (implementation available on request)
+
 0.14.0 (2021-05-13)
 -------------------
-
 * change `obx_query_prop_count()` to respect case-sensitivity setting when counting distinct strings
 * change `OBXSyncCredentialsType` values to start at 1
 * add `obx_query_find_first()` to get a first object matching the query
@@ -16,7 +38,6 @@ ObjectBox C and C++ API Changelog
 
 0.13.0 (2021-03-16)
 -------------------
-
 * add Sync binary library variants for all supported platforms
 * add MacOS universal binary library, supporting Intel x64 and Apple Silicon arm64
 * split Sync symbols out of objectbox.h/pp into objectbox-sync.h/pp

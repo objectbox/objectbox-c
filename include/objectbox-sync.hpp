@@ -19,7 +19,7 @@
 #include "objectbox-sync.h"
 #include "objectbox.hpp"
 
-static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 14 && OBX_VERSION_PATCH == 0,
+static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 15 && OBX_VERSION_PATCH == 0,
               "Versions of objectbox.h and objectbox-sync.hpp files do not match, please update");
 
 static_assert(sizeof(obx_id) == sizeof(OBX_id_array::ids[0]),
@@ -29,6 +29,7 @@ namespace obx {
 
 class SyncCredentials {
     friend SyncClient;
+    friend SyncServer;
     OBXSyncCredentialsType type_;
     std::vector<uint8_t> data_;
 
@@ -109,13 +110,14 @@ struct SyncChange {
 
 /// Notifies of fine granular changes on the object level happening during sync.
 /// @note this may affect performance. Use SyncClientCompletionListener for the general synchronization-finished check.
-class SyncClientChangeListener {
+class SyncChangeListener {
 public:
     /// Called each time when data `changes` from sync were applied locally.
     virtual void changed(const std::vector<SyncChange>& changes) noexcept = 0;
 
 private:
     friend SyncClient;
+    friend SyncServer;
 
     void changed(const OBX_sync_change_array* cChanges) noexcept {
         std::vector<SyncChange> changes(cChanges->count);
@@ -146,8 +148,14 @@ private:
 class SyncClientListener : public SyncClientLoginListener,
                            public SyncClientCompletionListener,
                            public SyncClientConnectionListener,
-                           public SyncClientChangeListener,
+                           public SyncChangeListener,
                            public SyncClientTimeListener {};
+
+class SyncObjectsMessageListener {
+public:
+    /// TODO do we want to transform to a more c++ friendly representation, like in other listeners?
+    virtual void received(const OBX_sync_msg_objects* cObjects) noexcept = 0;
+};
 
 /// Sync client is used to provide ObjectBox Sync client capabilities to your application.
 class SyncClient : public Closable {
@@ -161,7 +169,7 @@ class SyncClient : public Closable {
         std::shared_ptr<SyncClientLoginListener> login;
         std::shared_ptr<SyncClientCompletionListener> complete;
         std::shared_ptr<SyncClientConnectionListener> connect;
-        std::shared_ptr<SyncClientChangeListener> change;
+        std::shared_ptr<SyncChangeListener> change;
         std::shared_ptr<SyncClientTimeListener> time;
         std::shared_ptr<SyncClientListener> combined;
     } listeners_;
@@ -173,7 +181,12 @@ public:
     /// This does not initiate any connection attempts yet: call start() to do so.
     explicit SyncClient(Store& store, const std::string& serverUri, const SyncCredentials& creds) : store_(store) {
         cSync_ = checkPtrOrThrow(obx_sync(store.cPtr(), serverUri.c_str()), "can't initialize sync client");
-        setCredentials(creds);
+        try {
+            setCredentials(creds);
+        } catch (...) {
+            close();  // free native resources before throwing
+            throw;
+        }
     }
 
     /// Creates a sync client associated with the given store and options.
@@ -216,6 +229,12 @@ public:
 
     /// Gets the current sync client state.
     OBXSyncState state() const { return obx_sync_state(cPtr()); }
+
+    /// Gets the protocol version this client uses.
+    static uint32_t protocolVersion() { return obx_sync_protocol_version(); }
+
+    /// Returns the protocol version of the server after a connection was established (or attempted), zero otherwise.
+    uint32_t serverProtocolVersion() const { return obx_sync_protocol_version_server(cPtr()); }
 
     /// Configure authentication credentials.
     /// The accepted OBXSyncCredentials type depends on your sync-server configuration.
@@ -387,7 +406,7 @@ public:
         }
     }
 
-    void setChangeListener(std::shared_ptr<SyncClientChangeListener> listener) {
+    void setChangeListener(std::shared_ptr<SyncChangeListener> listener) {
         Guard lock(listeners_.mutex);
 
         // if it was previously set, unassign in the core before (potentially) destroying the object
@@ -398,7 +417,7 @@ public:
             obx_sync_listener_change(
                 cPtr(),
                 [](void* arg, const OBX_sync_change_array* cChanges) {
-                    static_cast<SyncClientChangeListener*>(arg)->changed(cChanges);
+                    static_cast<SyncChangeListener*>(arg)->changed(cChanges);
                 },
                 listeners_.change.get());
         }
@@ -526,6 +545,180 @@ inline std::shared_ptr<SyncClient> Store::syncClient() {
     std::lock_guard<std::mutex> lock(syncClientMutex_);
     return std::static_pointer_cast<SyncClient>(syncClient_);
 }
+
+/// The ObjectBox Sync Server to run within your application (embedded server).
+/// Note that you need a special sync edition, which includes the server components. Check https://objectbox.io/sync/.
+class SyncServer : public Closable {
+    OBX_sync_server* cPtr_;
+    std::unique_ptr<Store> store_;
+
+    /// Groups all listeners and the mutex that protects access to them. We could have a separate mutex for each
+    /// listener but that's probably an overkill.
+    struct {
+        std::mutex mutex;
+        std::shared_ptr<SyncChangeListener> change;
+        std::shared_ptr<SyncObjectsMessageListener> object;
+    } listeners_;
+
+    using Guard = std::lock_guard<std::mutex>;
+
+public:
+    static bool isAvailable() { return obx_has_feature(OBXFeature_SyncServer); }
+
+    /// Prepares an ObjectBox Sync Server to run within your application (embedded server) at the given URI.
+    /// This call opens a store with the given options (as Store() does). Get it via store().
+    /// The server's store is tied to the server itself and is closed when the server is closed.
+    /// Before actually starting the server via start(), you can configure:
+    /// - accepted credentials via setCredentials() (always required)
+    /// - SSL certificate info via setCertificatePath() (required if you use wss)
+    /// \note The model given via store_options is also used to verify the compatibility of the models presented by
+    /// clients.
+    ///       E.g. a client with an incompatible model will be rejected during login.
+    /// @param storeOptions Options for the server's store.
+    /// @param uri The URI (following the pattern protocol:://IP:port) the server should listen on.
+    ///        Supported \b protocols are "ws" (WebSockets) and "wss" (secure WebSockets).
+    ///        To use the latter ("wss"), you must also call obx_sync_server_certificate_path().
+    ///        To bind to all available \b interfaces, including those that are available from the "outside", use
+    ///        0.0.0.0 as the IP. On the other hand, "127.0.0.1" is typically (may be OS dependent) only available on
+    ///        the same device. If you do not require a fixed \b port, use 0 (zero) as a port to tell the server to pick
+    ///        an arbitrary port that is available. The port can be queried via obx_sync_server_port() once the server
+    ///        was started. \b Examples: "ws://0.0.0.0:9999" could be used during development (no certificate config
+    ///        needed), while in a production system, you may want to use wss and a specific IP for security reasons.
+    // TODO also offer SyncServer(const Store::Options& storeOptions, const std::string& uri)
+    explicit SyncServer(Store::Options&& storeOptions, const std::string& uri) {
+        cPtr_ = checkPtrOrThrow(obx_sync_server(storeOptions.release(), uri.c_str()), "Could not create SyncServer");
+
+        try {
+            OBX_store* cStore = checkPtrOrThrow(obx_sync_server_store(cPtr_), "Can't get SyncServer's store");
+            store_.reset(new Store(cStore, false));
+        } catch (...) {
+            close();
+            throw;
+        }
+    }
+
+    SyncServer(SyncServer&& source) noexcept : cPtr_(source.cPtr_) {
+        source.cPtr_ = nullptr;
+        Guard lock(source.listeners_.mutex);
+        std::swap(listeners_.change, source.listeners_.change);
+    }
+
+    /// Can't be copied, single owner of C resources is required (to avoid double-free during destruction)
+    SyncServer(const SyncServer&) = delete;
+
+    ~SyncServer() override {
+        try {
+            close();
+        } catch (...) {
+        }
+    }
+
+    /// The store that is associated with this server.
+    Store& store() {
+        OBJECTBOX_VERIFY_STATE(store_);
+        return *store_;
+    }
+
+    /// Closes and cleans up all resources used by this sync server. Does nothing if already closed.
+    /// It can no longer be used afterwards, make a new sync server instead.
+    void close() final {
+        OBX_sync_server* ptr = cPtr_;
+        cPtr_ = nullptr;
+        store_.reset();
+        if (ptr) {
+            checkErrOrThrow(obx_sync_server_close(ptr));
+        }
+    }
+
+    /// Returns if this sync server is closed and can no longer be used.
+    bool isClosed() override { return cPtr_ == nullptr; }
+
+    /// Sets SSL certificate for the server to use. Use before start().
+    void setCertificatePath(const std::string& path) {
+        checkErrOrThrow(obx_sync_server_certificate_path(cPtr(), path.c_str()));
+    }
+
+    /// Sets credentials for the server to accept. Use before start().
+    /// @param data may be NULL in combination with OBXSyncCredentialsType_NONE
+    void setCredentials(const SyncCredentials& creds) {
+        checkErrOrThrow(obx_sync_server_credentials(
+            cPtr(), creds.type_, creds.data_.empty() ? nullptr : creds.data_.data(), creds.data_.size()));
+    }
+
+    /// Once the sync server is configured, you can "start" it to start accepting client connections.
+    /// This method triggers communication in the background and will return immediately.
+    void start() { checkErrOrThrow(obx_sync_server_start(cPtr())); }
+
+    /// Stops this sync server. Does nothing if it is already stopped.
+    void stop() { checkErrOrThrow(obx_sync_server_stop(cPtr())); }
+
+    /// Returns if this sync server is running
+    bool isRunning() { return obx_sync_server_running(cPtr()); }
+
+    /// Returns a URL this server is listening on, including the bound port (see port().
+    std::string url() { return checkPtrOrThrow(obx_sync_server_url(cPtr()), "Can't get SyncServer bound URL"); }
+
+    /// Returns a port this server listens on. This is especially useful if the bindUri given to the constructor
+    /// specified "0" port (i.e. automatic assignment).
+    uint16_t port() {
+        uint16_t result = obx_sync_server_port(cPtr());
+        if (!result) throwLastError();
+        return result;
+    }
+
+    /// Returns the number of clients connected to this server.
+    uint64_t connections() { return obx_sync_server_connections(cPtr()); }
+
+    /// Get server runtime statistics.
+    std::string statsString(bool includeZeroValues = true) {
+        return checkPtrOrThrow(obx_sync_server_stats_string(cPtr(), includeZeroValues),
+                               "Can't get SyncServer stats string");
+    }
+
+    void setChangeListener(std::shared_ptr<SyncChangeListener> listener) {
+        Guard lock(listeners_.mutex);
+
+        // Keep the previous listener (if any) alive so the core may still call it before we finally switch.
+        // TODO, this is implemented differently (more efficiently?) than client listeners, consider changing there too?
+        listeners_.change.swap(listener);
+
+        if (listeners_.change) {  // switch if a new listener was given
+            obx_sync_server_listener_change(
+                cPtr(),
+                [](void* arg, const OBX_sync_change_array* cChanges) {
+                    static_cast<SyncChangeListener*>(arg)->changed(cChanges);
+                },
+                listeners_.change.get());
+        } else if (listener) {  // unset the previous listener, if set
+            obx_sync_server_listener_change(cPtr(), nullptr, nullptr);
+        }
+    }
+
+    void setObjectsMessageListener(std::shared_ptr<SyncObjectsMessageListener> listener) {
+        Guard lock(listeners_.mutex);
+
+        // Keep the previous listener (if any) alive so the core may still call it before we finally switch.
+        listeners_.object.swap(listener);
+
+        if (listeners_.object) {  // switch if a new listener was given
+            obx_sync_server_listener_msg_objects(
+                cPtr(),
+                [](void* arg, const OBX_sync_msg_objects* cObjects) {
+                    static_cast<SyncObjectsMessageListener*>(arg)->received(cObjects);
+                },
+                listeners_.object.get());
+        } else if (listener) {  // unset the previous listener, if set
+            obx_sync_server_listener_msg_objects(cPtr(), nullptr, nullptr);
+        }
+    }
+
+protected:
+    OBX_sync_server* cPtr() const {
+        OBX_sync_server* ptr = cPtr_;
+        if (ptr == nullptr) throw std::runtime_error("Sync server was already closed");
+        return ptr;
+    }
+};
 
 /**@}*/  // end of doxygen group
 }  // namespace obx

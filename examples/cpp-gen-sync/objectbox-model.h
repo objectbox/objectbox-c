@@ -24,11 +24,14 @@ static inline OBX_model* create_obx_model() {
     if (!model) return NULL;
     
     obx_model_entity(model, "Task", 1, 6645479796472661392);
+    obx_model_entity_flags(model, OBXEntityFlags_SYNC_ENABLED);
     obx_model_property(model, "id", OBXPropertyType_Long, 1, 9211738071025439652);
     obx_model_property_flags(model, OBXPropertyFlags_ID);
     obx_model_property(model, "text", OBXPropertyType_String, 2, 8804670454579230281);
     obx_model_property(model, "date_created", OBXPropertyType_Date, 4, 1260602348787983453);
+    obx_model_property_flags(model, OBXPropertyFlags_UNSIGNED);
     obx_model_property(model, "date_finished", OBXPropertyType_Date, 5, 6240065879507520219);
+    obx_model_property_flags(model, OBXPropertyFlags_UNSIGNED);
     obx_model_entity_last_property_id(model, 5, 6240065879507520219);
     
     obx_model_last_entity_id(model, 1, 6645479796472661392);

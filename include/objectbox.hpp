@@ -25,7 +25,7 @@
 #include <optional>
 #endif
 
-static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 14 && OBX_VERSION_PATCH == 0,
+static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 15 && OBX_VERSION_PATCH == 0,
               "Versions of objectbox.h and objectbox.hpp files do not match, please update");
 
 static_assert(sizeof(obx_id) == sizeof(OBX_id_array::ids[0]),
@@ -97,6 +97,7 @@ class Transaction;
 
 class Sync;
 class SyncClient;
+class SyncServer;
 
 class Closable {
 public:
@@ -107,16 +108,29 @@ public:
 
 class Store {
     OBX_store* cStore_;
+    bool owned_ = true;  ///< whether the store pointer is owned (true except for SyncServer::store())
     std::shared_ptr<Closable> syncClient_;
     std::mutex syncClientMutex_;
 
     friend Sync;
     friend SyncClient;
+    friend SyncServer;
+
+    explicit Store(OBX_store* ptr, bool owned) : cStore_(ptr), owned_(owned) {
+        OBJECTBOX_VERIFY_ARGUMENT(cStore_ != nullptr);
+    }
 
 public:
     class Options {
         friend class Store;
+        friend class SyncServer;
         mutable OBX_store_options* opt = nullptr;
+
+        OBX_store_options* release() const {  // TODO remove const modifier after changing store arg to accept Options&&
+            OBX_store_options* result = opt;
+            opt = nullptr;
+            return result;
+        }
 
     public:
         Options() {
@@ -157,17 +171,31 @@ public:
             return *this;
         }
 
-        /// Set the maximum number of readers on the options.
+        /// Set the maximum number of readers (related to read transactions.
         /// "Readers" are an finite resource for which we need to define a maximum number upfront.
         /// The default value is enough for most apps and usually you can ignore it completely.
         /// However, if you get the OBX_ERROR_MAX_READERS_EXCEEDED error, you should verify your threading.
         /// For each thread, ObjectBox uses multiple readers.
         /// Their number (per thread) depends on number of types, relations, and usage patterns.
         /// Thus, if you are working with many threads (e.g. in a server-like scenario), it can make sense to increase
-        /// the maximum number of readers. Note: The internal default is currently around 120. So when hitting this
-        /// limit, try values around 200-500.
+        /// the maximum number of readers.
+        ///
+        /// \note The internal default is currently 126. So when hitting this limit, try values around 200-500.
+        ///
+        /// \attention Each thread that performed a read transaction and is still alive holds on to a reader slot.
+        ///       These slots only get vacated when the thread ends. Thus be mindful with the number of active threads.
+        ///       Alternatively, you can opt to try the experimental noReaderThreadLocals option flag.
         Options& maxReaders(unsigned int maxReaders) {
             obx_opt_max_readers(opt, maxReaders);
+            return *this;
+        }
+
+        /// Disables the usage of thread locals for "readers" related to read transactions.
+        /// This can make sense if you are using a lot of threads that are kept alive.
+        /// \note This is still experimental, as it comes with subtle behavior changes at a low level and may affect
+        ///       corner cases with e.g. transactions, which may not be fully tested at the moment.
+        Options& noReaderThreadLocals(bool flag) {
+            obx_opt_no_reader_thread_locals(opt, flag);
             return *this;
         }
 
@@ -299,8 +327,14 @@ public:
         /// Similar to preTxDelay but after a transaction was committed.
         /// One of the purposes is to give other transactions some time to execute.
         /// In combination with preTxDelay this can prolong non-TX batching time if only a few operations are around.
-        Options& asyncPostTxnDelay(uint32_t delayMicros, uint32_t delay2Micros, size_t minQueueLengthForDelay2) {
-            obx_opt_async_post_txn_delay4(opt, delayMicros, delay2Micros, minQueueLengthForDelay2);
+        /// @param subtractProcessingTime If set, the delayMicros is interpreted from the start of TX processing.
+        ///        In other words, the actual delay is delayMicros minus the TX processing time including the commit.
+        ///        This can make timings more accurate (e.g. when fixed batching interval are given).
+
+        Options& asyncPostTxnDelay(uint32_t delayMicros, uint32_t delay2Micros, size_t minQueueLengthForDelay2,
+                                   bool subtractProcessingTime = false) {
+            obx_opt_async_post_txn_delay5(opt, delayMicros, delay2Micros, minQueueLengthForDelay2,
+                                          subtractProcessingTime);
             return *this;
         }
 
@@ -337,14 +371,12 @@ public:
 
     explicit Store(OBX_model* model) : Store(Options().model(model)) {}
 
-    explicit Store(const Options& options) {
-        OBX_store_options* opt = options.opt;
-        options.opt = nullptr;  // obx_store_open() will free it already (avoid double free)
-        cStore_ = obx_store_open(opt);
-        checkPtrOrThrow(cStore_, "can't open store");
-    }
+    // TODO change the argument to Options&& to be semantically correct
+    explicit Store(const Options& options)
+        : Store(checkPtrOrThrow(obx_store_open(options.release()), "can't open store"), true) {}
 
-    explicit Store(OBX_store* cStore) : cStore_(cStore) { OBJECTBOX_VERIFY_ARGUMENT(cStore != nullptr); }
+    /// Wraps an existing C-API store pointer, taking ownership (don't close it manually anymore)
+    explicit Store(OBX_store* cStore) : Store(cStore, true) {}
 
     /// Can't be copied, single owner of C resources is required (to avoid double-free during destruction)
     Store(const Store&) = delete;
@@ -372,6 +404,11 @@ public:
     /// @return an existing SyncClient associated with the store (if available; see Sync::client() to create one)
     /// @note: implemented in objectbox-sync.hpp
     std::shared_ptr<SyncClient> syncClient();
+
+    /// Enable (or disable) debug logging. This requires a version of the library with OBXFeature_DebugLog.
+    static void debugLog(bool enabled) { checkErrOrThrow(obx_debug_log(enabled)); }
+
+    static void removeDbFiles(const std::string& directory) { checkErrOrThrow(obx_remove_db_files(directory.c_str())); }
 };
 
 /// Provides RAII wrapper for an active database transaction on the current thread (do not use across threads). A
@@ -2104,7 +2141,7 @@ inline Store::~Store() {
         }
     }
 
-    obx_store_close(cStore_);
+    if (owned_) obx_store_close(cStore_);
 }
 
 /**@}*/  // end of doxygen group

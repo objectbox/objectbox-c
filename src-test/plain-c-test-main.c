@@ -95,7 +95,7 @@ obx_err testCursorStuff(OBX_cursor* cursor) {
     const void* dataRead;
     size_t sizeRead;
     if (obx_cursor_get(cursor, id, &dataRead, &sizeRead)) return printError();
-    printf("%zu data bytes read from ID %ld\n", sizeRead, (long)id);
+    printf("%zu data bytes read from ID %ld\n", sizeRead, (long) id);
 
     obx_err rc = obx_cursor_get(cursor, id + 1, &dataRead, &sizeRead);
     if (rc != OBX_NOT_FOUND) {
@@ -170,6 +170,9 @@ err:
 }
 
 int main(int argc, char* args[]) {
+    // Remove a previous version of the database to prevent test failures because of the model created by another test.
+    obx_remove_db_files("objectbox");
+
     printf("Testing libobjectbox version %s, core version: %s\n", obx_version_string(), obx_version_core_string());
     printf("Result array support: %d\n", obx_has_feature(OBXFeature_ResultArray));
 

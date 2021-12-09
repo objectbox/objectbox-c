@@ -11,7 +11,7 @@ box.put({.text = "Buy milk"});
 
 See [ObjectBox C and C++ docs](https://cpp.objectbox.io/) for API details.  
 
-**Latest version: 0.14.0** (2021-05-13).
+**Latest version: 0.15.0** (2021-12-09).
 See [changelog](CHANGELOG.md) for more details.
 
 Feature Highlights
@@ -31,8 +31,8 @@ And some more technical details:
 
 * Zero-copy reads for highest possible performance; access tens of millions of objects on commodity hardware
 * Lightweight for smart devices; its binary size is only around 1 MB 
-  (special feature reduced versions with 1/3 - 1/2 size are available on request)
-* Direct support for [FlatBuffers](https://google.github.io/flatbuffers/) data objects (aka "flatbuffers table") 
+* Direct support for [FlatBuffers](https://google.github.io/flatbuffers/) data objects (aka "flatbuffers table")
+* Flex type to represent any FlexBuffers
 * Secondary indexes based on object properties
 * Async API for asynchronous puts, inserts, updates, removes
 * Optimized Time series types (TS edition only)
@@ -77,7 +77,7 @@ Documentation
 
 Current state / Changelog
 -------------------------
-The C API is a thin wrapper around a robust DB core, which is version 2.x and already used on millions of devices.
+The C API is a thin wrapper around a robust DB core, which is version 3.x and already used on millions of devices.
 
 **Beta notice:** the C API will become stable starting from version 1.0.
 Until then, API improvements may result in breaking changes. For example, functions may still be renamed.

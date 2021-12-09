@@ -1,11 +1,11 @@
+/// objectbox:sync
 table Task {
     id: ulong;
     text: string;
 
     /// objectbox:date
-    date_created: long;
+    date_created: ulong;
 
     /// objectbox:date
-    date_finished: long;
-
+    date_finished: ulong;
 }

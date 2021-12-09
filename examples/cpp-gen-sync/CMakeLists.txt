@@ -1,5 +1,5 @@
-# C++ local-only example
-set(PROJECT_NAME objectbox-c-examples-tasks-cpp-gen)
+# C++ sync-enabled client example
+set(PROJECT_NAME objectbox-c-examples-tasks-cpp-gen-sync)
 project(${PROJECT_NAME} CXX)
 add_executable(${PROJECT_NAME}
         main.cpp

@@ -1,0 +1,7 @@
+image: objectboxio/cbuild:21.11.11-xenial
+
+build:
+  stage: build
+  tags: [x64, docker, linux]
+  script:
+    - ./test.sh

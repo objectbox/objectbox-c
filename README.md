@@ -29,11 +29,11 @@ Feature Highlights
 🦮 **Statically typed:** compile time checks & optimizations\
 📃 **Automatic schema migrations:** no update scripts needed
 
-
+**And much more than just data persistence**\
 👥 **[ObjectBox Sync](https://objectbox.io/sync/):** keeps data in sync between devices and servers\
 🕒 **[ObjectBox TS](https://objectbox.io/time-series-database/):** time series extension for time based data
 
-And some more technical details:
+Some more technical details:
 
 * Zero-copy reads for highest possible performance; access tens of millions of objects on commodity hardware
 * Lightweight for smart devices; its binary size is only around 1 MB 
@@ -106,6 +106,35 @@ The plain C API (without the Generator) also serves as a basis for ObjectBox bin
 For example, the official APIs for [Go](https://github.com/objectbox/objectbox-go), [Swift](https://github.com/objectbox/objectbox-swift), [Dart/Flutter](https://github.com/objectbox/objectbox-dart) and [Python](https://github.com/objectbox/objectbox-python) rely on the C API.
 In the same way, you could create an ObjectBox API for another programming language, e.g. for JavaScript.
 For the C API, data consists of bytes representing FlatBuffers tables, which you can build and read in your language of choice.
+
+Other languages/bindings
+------------------------
+ObjectBox supports multiple platforms and languages.
+Besides C/C++, ObjectBox also offers: 
+
+* [ObjectBox Java / Kotlin](https://github.com/objectbox/objectbox-java): runs on Android, desktop, and servers.
+* [ObjectBox Swift](https://github.com/objectbox/objectbox-swift): build fast mobile apps for iOS (and macOS) 
+* [ObjectBox Dart/Flutter](https://github.com/objectbox/objectbox-dart): cross-platform for mobile and desktop apps 
+* [ObjectBox Go](https://github.com/objectbox/objectbox-go): great for data-driven tools and embedded server applications 
+
+
+How I help ObjectBox?
+---------------------------
+We're on a mission to bring joy and delight to Mobile app developers.
+We want ObjectBox not only to be the fastest Swift database, but also the swiftiest Swift data persistence, making you enjoy coding with ObjectBox.
+
+To do that, we want your feedback: what do you love? What's amiss? Where do you struggle in everyday app development?
+
+**We're looking forward to receiving your comments and requests:**
+
+- Add [GitHub issues](https://github.com/ObjectBox/objectbox-java/issues) 
+- Upvote issues you find important by hitting the 👍/+1 reaction button
+- Drop us a line via [@ObjectBox_io](https://twitter.com/ObjectBox_io/)
+- ⭐ us, if you like what you see 
+
+Thank you! 🙏
+
+Keep in touch: For general news on ObjectBox, [check our blog](https://objectbox.io/blog)!
 
 License
 -------

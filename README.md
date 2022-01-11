@@ -118,7 +118,7 @@ Besides C/C++, ObjectBox also offers:
 * [ObjectBox Go](https://github.com/objectbox/objectbox-go): great for data-driven tools and embedded server applications 
 
 
-How I help ObjectBox?
+How can I help ObjectBox?
 ---------------------------
 Let us know what you love, what you don’t, what do you want to see next?
 

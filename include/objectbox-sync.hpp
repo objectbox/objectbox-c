@@ -19,7 +19,7 @@
 #include "objectbox-sync.h"
 #include "objectbox.hpp"
 
-static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 15 && OBX_VERSION_PATCH == 0,
+static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 15 && OBX_VERSION_PATCH == 1,
               "Versions of objectbox.h and objectbox-sync.hpp files do not match, please update");
 
 static_assert(sizeof(obx_id) == sizeof(OBX_id_array::ids[0]),
@@ -153,7 +153,7 @@ class SyncClientListener : public SyncClientLoginListener,
 
 class SyncObjectsMessageListener {
 public:
-    /// TODO do we want to transform to a more c++ friendly representation, like in other listeners?
+    // TODO do we want to transform to a more c++ friendly representation, like in other listeners?
     virtual void received(const OBX_sync_msg_objects* cObjects) noexcept = 0;
 };
 

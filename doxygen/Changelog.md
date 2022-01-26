@@ -3,6 +3,16 @@
 ObjectBox C and C++ API Changelog
 =================================
 
+0.15.1 (2022-01-25)
+-------------------
+* Fix non-unique indexes triggering unique constraint violations in corner cases (introduced in 0.15.0)
+* Minor performance improvements with hashed indexes
+* Admin UI now supports multiple sessions to the same host using different ports (session ID via HTTP request)
+
+### Sync
+
+* Performance improvements for compression and decompression
+
 0.15.0 (2021-12-09)
 -------------------
 * New "Flex" data type that can contain data of various types like integers, floating points, strings, lists and maps 

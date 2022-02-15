@@ -1,6 +1,11 @@
 ObjectBox C and C++ API Changelog
 =================================
 
+0.15.2 (2022-02-15)
+-------------------
+* Add store cloning
+* Fix attaching to a reopened store
+
 0.15.1 (2022-01-25)
 -------------------
 * Fix non-unique indexes triggering unique constraint violations in corner cases (introduced in 0.15.0)

@@ -135,7 +135,7 @@ Keep in touch: For general news on ObjectBox, [check our blog](https://objectbox
 
 License
 -------
-    Copyright 2018-2021 ObjectBox Ltd. All rights reserved.
+    Copyright 2018-2022 ObjectBox Ltd. All rights reserved.
     
     Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.

@@ -16,7 +16,6 @@
 
 #include "tasklist-example-app.hpp"
 
-#include "objectbox-sync.hpp"
 
 using namespace obx;
 
@@ -49,6 +48,7 @@ int main(int argc, char* argv[]) {
     std::shared_ptr<SyncClient> client = Sync::client(store, syncServerURL, SyncCredentials::none());
     client->start();
 
-    TasklistCmdlineApp app(store);
-    return app.run();
+    auto app = std::make_shared<TasklistCmdlineApp>(store);
+    client->setChangeListener(app);
+    return app->run();
 }

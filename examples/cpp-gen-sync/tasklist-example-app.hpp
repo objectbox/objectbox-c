@@ -1,5 +1,5 @@
 /*
- * Copyright 2018-2020 ObjectBox Ltd. All rights reserved.
+ * Copyright 2018-2022 ObjectBox Ltd. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@
 #include <iostream>
 
 #include "objectbox-model.h"
+#include "objectbox-sync.hpp"
 #include "objectbox.hpp"
 #include "tasklist.obx.hpp"
 
@@ -51,7 +52,7 @@ int processArgs(int argc, char* argv[], obx::Store::Options& outOptions) {
     return 0;
 }
 
-class TasklistCmdlineApp {
+class TasklistCmdlineApp : public obx::SyncChangeListener {
     obx::Store& store;
     obx::Box<Task> taskBox;
 
@@ -111,12 +112,7 @@ public:
                             printHelp();
                             break;
                         }
-
-                        printf("%3s  %-14s  %-14s  %s\n", "ID", "Created", "Finished", "Text");
-                        for (const auto& task : list) {
-                            printf("%3" PRIu64 "  %-14s  %-14s  %s\n", task->id, fmtTime(task->date_created).c_str(),
-                                   fmtTime(task->date_finished).c_str(), task->text.c_str());
-                        }
+                        listTasks(list);
                         break;
                     }
                     case Command::Exit:
@@ -139,6 +135,12 @@ public:
         }
 
         return 0;
+    }
+
+    void changed(const std::vector<obx::SyncChange>& changes) noexcept override {
+        std::cout << "Task list has changed:" << std::endl;
+        std::vector<std::unique_ptr<Task>> list = taskBox.getAll();
+        listTasks(list);
     }
 
 protected:
@@ -182,5 +184,13 @@ protected:
     std::string fmtTime(uint64_t timestamp) {
         // NOTE: implement your fancy time formatting here...
         return std::to_string(timestamp);
+    }
+
+    void listTasks(std::vector<std::unique_ptr<Task>> &list) {
+        printf("%3s  %-14s  %-14s  %s\n", "ID", "Created", "Finished", "Text");
+        for (const auto& task : list) {
+            printf("%3" PRIu64 "  %-14s  %-14s  %s\n", task->id, fmtTime(task->date_created).c_str(),
+                fmtTime(task->date_finished).c_str(), task->text.c_str());
+        }
     }
 };

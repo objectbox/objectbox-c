@@ -1,5 +1,5 @@
 /*
- * Copyright 2018-2021 ObjectBox Ltd. All rights reserved.
+ * Copyright 2018-2022 ObjectBox Ltd. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@
 #include "objectbox-sync.h"
 #include "objectbox.hpp"
 
-static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 15 && OBX_VERSION_PATCH == 2,
+static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 15 && OBX_VERSION_PATCH == 3,
               "Versions of objectbox.h and objectbox-sync.hpp files do not match, please update");
 
 static_assert(sizeof(obx_id) == sizeof(OBX_id_array::ids[0]),
@@ -184,7 +184,7 @@ public:
         try {
             setCredentials(creds);
         } catch (...) {
-            close();  // free native resources before throwing
+            closeNonVirtual();  // free native resources before throwing
             throw;
         }
     }
@@ -205,7 +205,7 @@ public:
 
     virtual ~SyncClient() {
         try {
-            close();
+            closeNonVirtual();
         } catch (...) {
         }
     }
@@ -213,16 +213,7 @@ public:
     /// Closes and cleans up all resources used by this sync client.
     /// It can no longer be used afterwards, make a new sync client instead.
     /// Does nothing if this sync client has already been closed.
-    void close() override {
-        OBX_sync* ptr = cSync_.exchange(nullptr);
-        if (ptr) {
-            {
-                std::lock_guard<std::mutex> lock(store_.syncClientMutex_);
-                store_.syncClient_.reset();
-            }
-            checkErrOrThrow(obx_sync_close(ptr));
-        }
-    }
+    void close() override { closeNonVirtual(); }
 
     /// Returns if this sync client is closed and can no longer be used.
     bool isClosed() override { return cSync_ == nullptr; }
@@ -474,40 +465,56 @@ protected:
         return ptr;
     }
 
+    /// Close, but non-virtual to allow calls from constructor/destructor.
+    void closeNonVirtual() {
+        OBX_sync* ptr = cSync_.exchange(nullptr);
+        if (ptr) {
+            {
+                std::lock_guard<std::mutex> lock(store_.syncClientMutex_);
+                store_.syncClient_.reset();
+            }
+            checkErrOrThrow(obx_sync_close(ptr));
+        }
+    }
+
     void removeLoginListener(bool evenIfEmpty = false) {
-        if (listeners_.login || evenIfEmpty) {
+        std::shared_ptr<SyncClientLoginListener> listener = std::move(listeners_.login);
+        if (listener || evenIfEmpty) {
             obx_sync_listener_login(cPtr(), nullptr, nullptr);
             obx_sync_listener_login_failure(cPtr(), nullptr, nullptr);
-            listeners_.login.reset();
         }
     }
 
     void removeCompletionListener(bool evenIfEmpty = false) {
-        if (listeners_.complete || evenIfEmpty) {
+        std::shared_ptr<SyncClientCompletionListener> listener = std::move(listeners_.complete);
+        if (listener || evenIfEmpty) {
             obx_sync_listener_complete(cPtr(), nullptr, nullptr);
-            listeners_.complete.reset();
+            listener.reset();
         }
     }
 
     void removeConnectionListener(bool evenIfEmpty = false) {
-        if (listeners_.connect || evenIfEmpty) {
+        std::shared_ptr<SyncClientConnectionListener> listener = std::move(listeners_.connect);
+        if (listener || evenIfEmpty) {
             obx_sync_listener_connect(cPtr(), nullptr, nullptr);
             obx_sync_listener_disconnect(cPtr(), nullptr, nullptr);
-            listeners_.connect.reset();
+            listener.reset();
         }
     }
 
     void removeTimeListener(bool evenIfEmpty = false) {
-        if (listeners_.time || evenIfEmpty) {
+        std::shared_ptr<SyncClientTimeListener> listener = std::move(listeners_.time);
+        if (listener || evenIfEmpty) {
             obx_sync_listener_server_time(cPtr(), nullptr, nullptr);
-            listeners_.time.reset();
+            listener.reset();
         }
     }
 
     void removeChangeListener(bool evenIfEmpty = false) {
-        if (listeners_.change || evenIfEmpty) {
+        std::shared_ptr<SyncChangeListener> listener = std::move(listeners_.change);
+        if (listener || evenIfEmpty) {
             obx_sync_listener_change(cPtr(), nullptr, nullptr);
-            listeners_.change.reset();
+            listener.reset();
         }
     }
 };

@@ -3,8 +3,13 @@
 ObjectBox C and C++ API Changelog
 =================================
 
-0.15.2 (2022-02-15)
+0.15.3 (2022-05-05)
 -------------------
+* Allow UTF-8 for database directories on Windows (available for other platforms before)
+* Various internal improvements
+
+* 0.15.2 (2022-02-15)
+---------------------
 * Add store cloning
 * Fix attaching to a reopened store
 

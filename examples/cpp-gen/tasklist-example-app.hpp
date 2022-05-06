@@ -24,7 +24,7 @@
 #include "objectbox.hpp"
 #include "tasklist.obx.hpp"
 
-int processArgs(int argc, char* argv[], obx::Store::Options& outOptions) {
+int processArgs(int argc, char* argv[], obx::Options& outOptions) {
     // Remember, argv[0] is application path
 
     const char* directory = nullptr;

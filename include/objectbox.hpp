@@ -24,13 +24,17 @@
 #include <string>
 #include <vector>
 
-#include "flatbuffers/flatbuffers.h"
 #include "objectbox.h"
+
+#ifndef OBX_DISABLE_FLATBUFFERS  // FlatBuffers is required to put data; you can disable it until have the include file.
+#include "flatbuffers/flatbuffers.h"
+#endif
+
 #ifdef __cpp_lib_optional
 #include <optional>
 #endif
 
-static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 15 && OBX_VERSION_PATCH == 3,
+static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 16 && OBX_VERSION_PATCH == 0,
               "Versions of objectbox.h and objectbox.hpp files do not match, please update");
 
 static_assert(sizeof(obx_id) == sizeof(OBX_id_array::ids[0]),
@@ -43,12 +47,16 @@ namespace obx {
  * @{
  */
 
-class Exception : public std::runtime_error {
+/// Database related exception, containing a error code to differentiate between various errors.
+/// Note: what() typically contains a specific text about the error condition (sometimes helpful to resolve the issue).
+class DbException : public std::runtime_error {
     const int code_;
 
 public:
-    explicit Exception(const std::string& text, int code = 0) : runtime_error(text), code_(code) {}
-    explicit Exception(const char* text, int code = 0) : runtime_error(text), code_(code) {}
+    explicit DbException(const std::string& text, int code = 0) : runtime_error(text), code_(code) {}
+    explicit DbException(const char* text, int code = 0) : runtime_error(text), code_(code) {}
+
+    /// The error code as defined objectbox.h via the OBX_ERROR_* constants
     int code() const { return code_; }
 };
 
@@ -62,11 +70,23 @@ namespace {
 #define OBJECTBOX_VERIFY_STATE(c) \
     ((c) ? (void) (0) : throw std::runtime_error(std::string("State condition failed: " #c)))
 
+/// @throws DbException using the given error (defaults to obx_last_error_code())
 [[noreturn]] void throwLastError(obx_err err = obx_last_error_code()) {
-    if (err != obx_last_error_code()) {
-        throw Exception(std::string("Only previous error text available: ") + obx_last_error_message(), err);
+    if (err == OBX_SUCCESS) {  // Zero, there's no error actually
+        throw DbException("No error occurred (operation was successful)", err);
     } else {
-        throw Exception(obx_last_error_message(), err);
+        obx_err lastErr = obx_last_error_code();
+        if (err == lastErr) {
+            assert(lastErr != 0);  // checked indirectly against err before
+            throw DbException(obx_last_error_message(), err);
+        } else {  // Do not use obx_last_error_message() as primary msg because it originated from another code
+            std::string msg("Error code " + std::to_string(err));
+            if (lastErr != 0) {
+                msg.append(" (last: ").append(std::to_string(lastErr));
+                msg.append(", last msg: ").append(obx_last_error_message()).append(")");
+            }
+            throw DbException(msg, err);
+        }
     }
 }
 
@@ -82,7 +102,7 @@ bool checkSuccessOrThrow(obx_err err) {
 
 template <typename T>
 T* checkPtrOrThrow(T* ptr, const std::string& context) {
-    if (!ptr) throw Exception(context + ": " + obx_last_error_message(), obx_last_error_code());
+    if (!ptr) throw DbException(context + ": " + obx_last_error_message(), obx_last_error_code());
     return ptr;
 }
 
@@ -111,6 +131,258 @@ public:
     virtual void close() = 0;
 };
 
+/// Options provide a way to configure Store when opening it.
+/// Options functions can be chained, e.g. options.directory("mypath/objectbox").maxDbSizeInKb(2048);
+/// Note: Options objects can be used only once to create a store as they are "consumed" during Store creation.
+///       Thus, you need to create a new Option object for each Store that is created.
+class Options {
+    friend class Store;
+    friend class SyncServer;
+
+    mutable OBX_store_options* opt = nullptr;
+
+    OBX_store_options* release() {
+        OBX_store_options* result = opt;
+        opt = nullptr;
+        return result;
+    }
+
+public:
+    Options() {
+        opt = obx_opt();
+        checkPtrOrThrow(opt, "Could not create store options");
+    }
+
+    /// @deprecated is this used by generator?
+    Options(OBX_model* model) : Options() { this->model(model); }
+
+    ~Options() { obx_opt_free(opt); }
+
+    /// Set the model on the options. The default is no model.
+    /// NOTE: the model is always freed by this function, including when an error occurs.
+    Options& model(OBX_model* model) {
+        checkErrOrThrow(obx_opt_model(opt, model));
+        return *this;
+    }
+
+    /// Set the store directory on the options. The default is "objectbox".
+    Options& directory(const char* dir) {
+        checkErrOrThrow(obx_opt_directory(opt, dir));
+        return *this;
+    }
+
+    /// Set the store directory on the options. The default is "objectbox".
+    Options& directory(const std::string& dir) { return directory(dir.c_str()); }
+
+    /// Set the maximum db size on the options. The default is 1Gb.
+    Options& maxDbSizeInKb(size_t sizeInKb) {
+        obx_opt_max_db_size_in_kb(opt, sizeInKb);
+        return *this;
+    }
+
+    /// Set the file mode on the options. The default is 0644 (unix-style)
+    Options& fileMode(unsigned int fileMode) {
+        obx_opt_file_mode(opt, fileMode);
+        return *this;
+    }
+
+    /// Set the maximum number of readers (related to read transactions.
+    /// "Readers" are an finite resource for which we need to define a maximum number upfront.
+    /// The default value is enough for most apps and usually you can ignore it completely.
+    /// However, if you get the OBX_ERROR_MAX_READERS_EXCEEDED error, you should verify your threading.
+    /// For each thread, ObjectBox uses multiple readers.
+    /// Their number (per thread) depends on number of types, relations, and usage patterns.
+    /// Thus, if you are working with many threads (e.g. in a server-like scenario), it can make sense to increase
+    /// the maximum number of readers.
+    ///
+    /// \note The internal default is currently 126. So when hitting this limit, try values around 200-500.
+    ///
+    /// \attention Each thread that performed a read transaction and is still alive holds on to a reader slot.
+    ///       These slots only get vacated when the thread ends. Thus be mindful with the number of active threads.
+    ///       Alternatively, you can opt to try the experimental noReaderThreadLocals option flag.
+    Options& maxReaders(unsigned int maxReaders) {
+        obx_opt_max_readers(opt, maxReaders);
+        return *this;
+    }
+
+    /// Disables the usage of thread locals for "readers" related to read transactions.
+    /// This can make sense if you are using a lot of threads that are kept alive.
+    /// \note This is still experimental, as it comes with subtle behavior changes at a low level and may affect
+    ///       corner cases with e.g. transactions, which may not be fully tested at the moment.
+    Options& noReaderThreadLocals(bool flag) {
+        obx_opt_no_reader_thread_locals(opt, flag);
+        return *this;
+    }
+
+    /// Set the model on the options copying the given bytes. The default is no model.
+    Options& modelBytes(const void* bytes, size_t size) {
+        checkErrOrThrow(obx_opt_model_bytes(opt, bytes, size));
+        return *this;
+    }
+
+    /// Like modelBytes() BUT WITHOUT copying the given bytes.
+    /// Thus, you must keep the bytes available until after the store is created.
+    Options& modelBytesDirect(const void* bytes, size_t size) {
+        checkErrOrThrow(obx_opt_model_bytes_direct(opt, bytes, size));
+        return *this;
+    }
+
+    /// When the DB is opened initially, ObjectBox can do a consistency check on the given amount of pages.
+    /// Reliable file systems already guarantee consistency, so this is primarily meant to deal with unreliable
+    /// OSes, file systems, or hardware. Thus, usually a low number (e.g. 1-20) is sufficient and does not impact
+    /// startup performance significantly. To completely disable this you can pass 0, but we recommend a setting of
+    /// at least 1.
+    /// Note: ObjectBox builds upon ACID storage, which guarantees consistency given that the file system is working
+    /// correctly (in particular fsync).
+    /// @param page_limit limits the number of checked pages (currently defaults to 0, but will be increased in the
+    /// future)
+    /// @param leaf_level enable for visiting leaf pages (defaults to false)
+    Options& validateOnOpen(size_t pageLimit, bool leafLevel) {
+        obx_opt_validate_on_open(opt, pageLimit, leafLevel);
+        return *this;
+    }
+
+    /// Don't touch unless you know exactly what you are doing:
+    /// Advanced setting typically meant for language bindings (not end users). See OBXPutPaddingMode description.
+    Options& putPaddingMode(OBXPutPaddingMode mode) {
+        obx_opt_put_padding_mode(opt, mode);
+        return *this;
+    }
+
+    /// Advanced setting meant only for special scenarios: setting to false causes opening the database in a
+    /// limited, schema-less mode. If you don't know what this means exactly: ignore this flag. Defaults to true.
+    Options& readSchema(bool value) {
+        obx_opt_read_schema(opt, value);
+        return *this;
+    }
+
+    /// Advanced setting recommended to be used together with read-only mode to ensure no data is lost.
+    /// Ignores the latest data snapshot (committed transaction state) and uses the previous snapshot instead.
+    /// When used with care (e.g. backup the DB files first), this option may also recover data removed by the
+    /// latest transaction. Defaults to false.
+    Options& usePreviousCommit(bool value) {
+        obx_opt_use_previous_commit(opt, value);
+        return *this;
+    }
+
+    /// Open store in read-only mode: no schema update, no write transactions. Defaults to false.
+    Options& readOnly(bool value) {
+        obx_opt_read_only(opt, value);
+        return *this;
+    }
+
+    /// Configure debug logging. Defaults to NONE
+    Options& debugFlags(OBXDebugFlags flags) {
+        obx_opt_debug_flags(opt, flags);
+        return *this;
+    }
+
+    /// Maximum of async elements in the queue before new elements will be rejected.
+    /// Hitting this limit usually hints that async processing cannot keep up;
+    /// data is produced at a faster rate than it can be persisted in the background.
+    /// In that case, increasing this value is not the only alternative; other values might also optimize
+    /// throughput. For example, increasing maxInTxDurationMicros may help too.
+    Options& asyncMaxQueueLength(size_t value) {
+        obx_opt_async_max_queue_length(opt, value);
+        return *this;
+    }
+
+    /// Producers (AsyncTx submitter) is throttled when the queue size hits this
+    Options& asyncThrottleAtQueueLength(size_t value) {
+        obx_opt_async_throttle_at_queue_length(opt, value);
+        return *this;
+    }
+
+    /// Sleeping time for throttled producers on each submission
+    Options& asyncThrottleMicros(uint32_t value) {
+        obx_opt_async_throttle_micros(opt, value);
+        return *this;
+    }
+
+    /// Maximum duration spent in a transaction before AsyncQ enforces a commit.
+    /// This becomes relevant if the queue is constantly populated at a high rate.
+    Options& asyncMaxInTxDuration(uint32_t micros) {
+        obx_opt_async_max_in_tx_duration(opt, micros);
+        return *this;
+    }
+
+    /// Maximum operations performed in a transaction before AsyncQ enforces a commit.
+    /// This becomes relevant if the queue is constantly populated at a high rate.
+    Options& asyncMaxInTxOperations(uint32_t value) {
+        obx_opt_async_max_in_tx_operations(opt, value);
+        return *this;
+    }
+
+    /// Before the AsyncQ is triggered by a new element in queue to starts a new run, it delays actually starting
+    /// the transaction by this value. This gives a newly starting producer some time to produce more than one a
+    /// single operation before AsyncQ starts. Note: this value should typically be low to keep latency low and
+    /// prevent accumulating too much operations.
+    Options& asyncPreTxnDelay(uint32_t delayMicros) {
+        obx_opt_async_pre_txn_delay(opt, delayMicros);
+        return *this;
+    }
+
+    /// Before the AsyncQ is triggered by a new element in queue to starts a new run, it delays actually starting
+    /// the transaction by this value. This gives a newly starting producer some time to produce more than one a
+    /// single operation before AsyncQ starts. Note: this value should typically be low to keep latency low and
+    /// prevent accumulating too much operations.
+    Options& asyncPreTxnDelay(uint32_t delayMicros, uint32_t delay2Micros, size_t minQueueLengthForDelay2) {
+        obx_opt_async_pre_txn_delay4(opt, delayMicros, delay2Micros, minQueueLengthForDelay2);
+        return *this;
+    }
+
+    /// Similar to preTxDelay but after a transaction was committed.
+    /// One of the purposes is to give other transactions some time to execute.
+    /// In combination with preTxDelay this can prolong non-TX batching time if only a few operations are around.
+    Options& asyncPostTxnDelay(uint32_t delayMicros) {
+        obx_opt_async_post_txn_delay(opt, delayMicros);
+        return *this;
+    }
+
+    /// Similar to preTxDelay but after a transaction was committed.
+    /// One of the purposes is to give other transactions some time to execute.
+    /// In combination with preTxDelay this can prolong non-TX batching time if only a few operations are around.
+    /// @param subtractProcessingTime If set, the delayMicros is interpreted from the start of TX processing.
+    ///        In other words, the actual delay is delayMicros minus the TX processing time including the commit.
+    ///        This can make timings more accurate (e.g. when fixed batching interval are given).
+
+    Options& asyncPostTxnDelay(uint32_t delayMicros, uint32_t delay2Micros, size_t minQueueLengthForDelay2,
+                               bool subtractProcessingTime = false) {
+        obx_opt_async_post_txn_delay5(opt, delayMicros, delay2Micros, minQueueLengthForDelay2, subtractProcessingTime);
+        return *this;
+    }
+
+    /// Numbers of operations below this value are considered "minor refills"
+    Options& asyncMinorRefillThreshold(size_t queueLength) {
+        obx_opt_async_minor_refill_threshold(opt, queueLength);
+        return *this;
+    }
+
+    /// If non-zero, this allows "minor refills" with small batches that came in (off by default).
+    Options& asyncMinorRefillMaxCount(uint32_t value) {
+        obx_opt_async_minor_refill_max_count(opt, value);
+        return *this;
+    }
+
+    /// Default value: 10000, set to 0 to deactivate pooling
+    Options& asyncMaxTxPoolSize(size_t value) {
+        obx_opt_async_max_tx_pool_size(opt, value);
+        return *this;
+    }
+
+    /// Total cache size; default: ~ 0.5 MB
+    Options& asyncObjectBytesMaxCacheSize(uint64_t value) {
+        obx_opt_async_object_bytes_max_cache_size(opt, value);
+        return *this;
+    }
+
+    /// Maximal size for an object to be cached (only cache smaller ones)
+    Options& asyncObjectBytesMaxSizeToCache(uint64_t value) {
+        obx_opt_async_object_bytes_max_size_to_cache(opt, value);
+        return *this;
+    }
+};
+
 class Store {
     OBX_store* cStore_;
     bool owned_ = true;  ///< whether the store pointer is owned (true except for SyncServer::store())
@@ -126,259 +398,12 @@ class Store {
     }
 
 public:
-    class Options {
-        friend class Store;
-        friend class SyncServer;
-        mutable OBX_store_options* opt = nullptr;
-
-        OBX_store_options* release() const {  // TODO remove const modifier after changing store arg to accept Options&&
-            OBX_store_options* result = opt;
-            opt = nullptr;
-            return result;
-        }
-
-    public:
-        Options() {
-            opt = obx_opt();
-            checkPtrOrThrow(opt, "Could not create store options");
-        }
-
-        /// @deprecated is this used by generator?
-        Options(OBX_model* model) : Options() { this->model(model); }
-
-        ~Options() { obx_opt_free(opt); }
-
-        /// Set the model on the options. The default is no model.
-        /// NOTE: the model is always freed by this function, including when an error occurs.
-        Options& model(OBX_model* model) {
-            checkErrOrThrow(obx_opt_model(opt, model));
-            return *this;
-        }
-
-        /// Set the store directory on the options. The default is "objectbox".
-        Options& directory(const char* dir) {
-            checkErrOrThrow(obx_opt_directory(opt, dir));
-            return *this;
-        }
-
-        /// Set the store directory on the options. The default is "objectbox".
-        Options& directory(const std::string& dir) { return directory(dir.c_str()); }
-
-        /// Set the maximum db size on the options. The default is 1Gb.
-        Options& maxDbSizeInKb(size_t sizeInKb) {
-            obx_opt_max_db_size_in_kb(opt, sizeInKb);
-            return *this;
-        }
-
-        /// Set the file mode on the options. The default is 0644 (unix-style)
-        Options& fileMode(unsigned int fileMode) {
-            obx_opt_file_mode(opt, fileMode);
-            return *this;
-        }
-
-        /// Set the maximum number of readers (related to read transactions.
-        /// "Readers" are an finite resource for which we need to define a maximum number upfront.
-        /// The default value is enough for most apps and usually you can ignore it completely.
-        /// However, if you get the OBX_ERROR_MAX_READERS_EXCEEDED error, you should verify your threading.
-        /// For each thread, ObjectBox uses multiple readers.
-        /// Their number (per thread) depends on number of types, relations, and usage patterns.
-        /// Thus, if you are working with many threads (e.g. in a server-like scenario), it can make sense to increase
-        /// the maximum number of readers.
-        ///
-        /// \note The internal default is currently 126. So when hitting this limit, try values around 200-500.
-        ///
-        /// \attention Each thread that performed a read transaction and is still alive holds on to a reader slot.
-        ///       These slots only get vacated when the thread ends. Thus be mindful with the number of active threads.
-        ///       Alternatively, you can opt to try the experimental noReaderThreadLocals option flag.
-        Options& maxReaders(unsigned int maxReaders) {
-            obx_opt_max_readers(opt, maxReaders);
-            return *this;
-        }
-
-        /// Disables the usage of thread locals for "readers" related to read transactions.
-        /// This can make sense if you are using a lot of threads that are kept alive.
-        /// \note This is still experimental, as it comes with subtle behavior changes at a low level and may affect
-        ///       corner cases with e.g. transactions, which may not be fully tested at the moment.
-        Options& noReaderThreadLocals(bool flag) {
-            obx_opt_no_reader_thread_locals(opt, flag);
-            return *this;
-        }
-
-        /// Set the model on the options copying the given bytes. The default is no model.
-        Options& modelBytes(const void* bytes, size_t size) {
-            checkErrOrThrow(obx_opt_model_bytes(opt, bytes, size));
-            return *this;
-        }
-
-        /// Like modelBytes() BUT WITHOUT copying the given bytes.
-        /// Thus, you must keep the bytes available until after the store is created.
-        Options& modelBytesDirect(const void* bytes, size_t size) {
-            checkErrOrThrow(obx_opt_model_bytes_direct(opt, bytes, size));
-            return *this;
-        }
-
-        /// When the DB is opened initially, ObjectBox can do a consistency check on the given amount of pages.
-        /// Reliable file systems already guarantee consistency, so this is primarily meant to deal with unreliable
-        /// OSes, file systems, or hardware. Thus, usually a low number (e.g. 1-20) is sufficient and does not impact
-        /// startup performance significantly. To completely disable this you can pass 0, but we recommend a setting of
-        /// at least 1.
-        /// Note: ObjectBox builds upon ACID storage, which guarantees consistency given that the file system is working
-        /// correctly (in particular fsync).
-        /// @param page_limit limits the number of checked pages (currently defaults to 0, but will be increased in the
-        /// future)
-        /// @param leaf_level enable for visiting leaf pages (defaults to false)
-        Options& validateOnOpen(size_t pageLimit, bool leafLevel) {
-            obx_opt_validate_on_open(opt, pageLimit, leafLevel);
-            return *this;
-        }
-
-        /// Don't touch unless you know exactly what you are doing:
-        /// Advanced setting typically meant for language bindings (not end users). See OBXPutPaddingMode description.
-        Options& putPaddingMode(OBXPutPaddingMode mode) {
-            obx_opt_put_padding_mode(opt, mode);
-            return *this;
-        }
-
-        /// Advanced setting meant only for special scenarios: setting to false causes opening the database in a
-        /// limited, schema-less mode. If you don't know what this means exactly: ignore this flag. Defaults to true.
-        Options& readSchema(bool value) {
-            obx_opt_read_schema(opt, value);
-            return *this;
-        }
-
-        /// Advanced setting recommended to be used together with read-only mode to ensure no data is lost.
-        /// Ignores the latest data snapshot (committed transaction state) and uses the previous snapshot instead.
-        /// When used with care (e.g. backup the DB files first), this option may also recover data removed by the
-        /// latest transaction. Defaults to false.
-        Options& usePreviousCommit(bool value) {
-            obx_opt_use_previous_commit(opt, value);
-            return *this;
-        }
-
-        /// Open store in read-only mode: no schema update, no write transactions. Defaults to false.
-        Options& readOnly(bool value) {
-            obx_opt_read_only(opt, value);
-            return *this;
-        }
-
-        /// Configure debug logging. Defaults to NONE
-        Options& debugFlags(OBXDebugFlags flags) {
-            obx_opt_debug_flags(opt, flags);
-            return *this;
-        }
-
-        /// Maximum of async elements in the queue before new elements will be rejected.
-        /// Hitting this limit usually hints that async processing cannot keep up;
-        /// data is produced at a faster rate than it can be persisted in the background.
-        /// In that case, increasing this value is not the only alternative; other values might also optimize
-        /// throughput. For example, increasing maxInTxDurationMicros may help too.
-        Options& asyncMaxQueueLength(size_t value) {
-            obx_opt_async_max_queue_length(opt, value);
-            return *this;
-        }
-
-        /// Producers (AsyncTx submitter) is throttled when the queue size hits this
-        Options& asyncThrottleAtQueueLength(size_t value) {
-            obx_opt_async_throttle_at_queue_length(opt, value);
-            return *this;
-        }
-
-        /// Sleeping time for throttled producers on each submission
-        Options& asyncThrottleMicros(uint32_t value) {
-            obx_opt_async_throttle_micros(opt, value);
-            return *this;
-        }
-
-        /// Maximum duration spent in a transaction before AsyncQ enforces a commit.
-        /// This becomes relevant if the queue is constantly populated at a high rate.
-        Options& asyncMaxInTxDuration(uint32_t micros) {
-            obx_opt_async_max_in_tx_duration(opt, micros);
-            return *this;
-        }
-
-        /// Maximum operations performed in a transaction before AsyncQ enforces a commit.
-        /// This becomes relevant if the queue is constantly populated at a high rate.
-        Options& asyncMaxInTxOperations(uint32_t value) {
-            obx_opt_async_max_in_tx_operations(opt, value);
-            return *this;
-        }
-
-        /// Before the AsyncQ is triggered by a new element in queue to starts a new run, it delays actually starting
-        /// the transaction by this value. This gives a newly starting producer some time to produce more than one a
-        /// single operation before AsyncQ starts. Note: this value should typically be low to keep latency low and
-        /// prevent accumulating too much operations.
-        Options& asyncPreTxnDelay(uint32_t delayMicros) {
-            obx_opt_async_pre_txn_delay(opt, delayMicros);
-            return *this;
-        }
-
-        /// Before the AsyncQ is triggered by a new element in queue to starts a new run, it delays actually starting
-        /// the transaction by this value. This gives a newly starting producer some time to produce more than one a
-        /// single operation before AsyncQ starts. Note: this value should typically be low to keep latency low and
-        /// prevent accumulating too much operations.
-        Options& asyncPreTxnDelay(uint32_t delayMicros, uint32_t delay2Micros, size_t minQueueLengthForDelay2) {
-            obx_opt_async_pre_txn_delay4(opt, delayMicros, delay2Micros, minQueueLengthForDelay2);
-            return *this;
-        }
-
-        /// Similar to preTxDelay but after a transaction was committed.
-        /// One of the purposes is to give other transactions some time to execute.
-        /// In combination with preTxDelay this can prolong non-TX batching time if only a few operations are around.
-        Options& asyncPostTxnDelay(uint32_t delayMicros) {
-            obx_opt_async_post_txn_delay(opt, delayMicros);
-            return *this;
-        }
-
-        /// Similar to preTxDelay but after a transaction was committed.
-        /// One of the purposes is to give other transactions some time to execute.
-        /// In combination with preTxDelay this can prolong non-TX batching time if only a few operations are around.
-        /// @param subtractProcessingTime If set, the delayMicros is interpreted from the start of TX processing.
-        ///        In other words, the actual delay is delayMicros minus the TX processing time including the commit.
-        ///        This can make timings more accurate (e.g. when fixed batching interval are given).
-
-        Options& asyncPostTxnDelay(uint32_t delayMicros, uint32_t delay2Micros, size_t minQueueLengthForDelay2,
-                                   bool subtractProcessingTime = false) {
-            obx_opt_async_post_txn_delay5(opt, delayMicros, delay2Micros, minQueueLengthForDelay2,
-                                          subtractProcessingTime);
-            return *this;
-        }
-
-        /// Numbers of operations below this value are considered "minor refills"
-        Options& asyncMinorRefillThreshold(size_t queueLength) {
-            obx_opt_async_minor_refill_threshold(opt, queueLength);
-            return *this;
-        }
-
-        /// If non-zero, this allows "minor refills" with small batches that came in (off by default).
-        Options& asyncMinorRefillMaxCount(uint32_t value) {
-            obx_opt_async_minor_refill_max_count(opt, value);
-            return *this;
-        }
-
-        /// Default value: 10000, set to 0 to deactivate pooling
-        Options& asyncMaxTxPoolSize(size_t value) {
-            obx_opt_async_max_tx_pool_size(opt, value);
-            return *this;
-        }
-
-        /// Total cache size; default: ~ 0.5 MB
-        Options& asyncObjectBytesMaxCacheSize(uint64_t value) {
-            obx_opt_async_object_bytes_max_cache_size(opt, value);
-            return *this;
-        }
-
-        /// Maximal size for an object to be cached (only cache smaller ones)
-        Options& asyncObjectBytesMaxSizeToCache(uint64_t value) {
-            obx_opt_async_object_bytes_max_size_to_cache(opt, value);
-            return *this;
-        }
-    };
-
     explicit Store(OBX_model* model) : Store(Options().model(model)) {}
 
-    // TODO change the argument to Options&& to be semantically correct
-    explicit Store(const Options& options)
-        : Store(checkPtrOrThrow(obx_store_open(options.release()), "can't open store"), true) {}
+    explicit Store(Options& options)
+        : Store(checkPtrOrThrow(obx_store_open(options.release()), "Can't open store"), true) {}
+
+    explicit Store(Options&& options) : Store((Options&) options) {}
 
     /// Wraps an existing C-API store pointer, taking ownership (don't close it manually anymore)
     explicit Store(OBX_store* cStore) : Store(cStore, true) {}
@@ -931,11 +956,13 @@ protected:
     }
 };
 
+#ifndef OBX_DISABLE_FLATBUFFERS
 // FlatBuffer builder is reused so the allocated memory stays available for the future objects.
 thread_local flatbuffers::FlatBufferBuilder fbb;
 inline void fbbCleanAfterUse() {
     if (fbb.GetSize() > 1024 * 1024) fbb.Reset();
 }
+#endif
 
 // enable_if_t missing in c++11 so let's have a shorthand here
 template <bool Condition, typename T = void>
@@ -1749,6 +1776,8 @@ public:
         return result;
     }
 
+#ifndef OBX_DISABLE_FLATBUFFERS
+
     /// Inserts or updates the given object in the database.
     /// @param object will be updated with a newly inserted ID if the one specified previously was zero. If an ID was
     /// already specified (non-zero), it will remain unchanged.
@@ -1806,6 +1835,8 @@ public:
         return putMany(objects, outIds, mode);
     }
 #endif
+
+#endif  // OBX_DISABLE_FLATBUFFERS
 
     /// Remove the object with the given id
     /// @returns whether the object was removed or not (because it didn't exist)
@@ -1970,6 +2001,8 @@ public:
     }
 
 private:
+#ifndef OBX_DISABLE_FLATBUFFERS
+
     template <typename Vector>
     size_t putMany(Vector& objects, std::vector<obx_id>* outIds, OBXPutMode mode) {
         if (outIds) {
@@ -2016,6 +2049,8 @@ private:
         return object.has_value() ? cursorPut(cursor, *object, mode) : 0;
     }
 #endif
+
+#endif  // OBX_DISABLE_FLATBUFFERS
 
     template <typename Item>
     std::vector<Item> getMany(const std::vector<obx_id>& ids) {
@@ -2090,6 +2125,8 @@ public:
         return cAsync_;
     }
 
+#ifndef OBX_DISABLE_FLATBUFFERS
+
     /// Reserve an ID, which is returned immediately for future reference, and insert asynchronously.
     /// Note: of course, it can NOT be guaranteed that the entity will actually be inserted successfully in the DB.
     /// @param object will be updated with the reserved ID.
@@ -2111,6 +2148,8 @@ public:
         if (id == 0) throwLastError();
         return id;
     }
+
+#endif  // OBX_DISABLE_FLATBUFFERS
 
     /// Asynchronously remove the object with the given id.
     void remove(obx_id id) { checkErrOrThrow(obx_async_remove(cPtr(), id)); }

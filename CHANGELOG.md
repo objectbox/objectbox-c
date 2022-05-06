@@ -1,13 +1,20 @@
 ObjectBox C and C++ API Changelog
 =================================
 
-0.15.3 (2022-05-05)
+0.16.0 (2022-05-06)
 -------------------
 * Allow UTF-8 for database directories on Windows (available for other platforms before)
 * Various internal improvements
 
-* 0.15.2 (2022-02-15)
----------------------
+### C++
+
+* Promoted `Options` to a top level class, as nested classes cannot be declared forward
+* New `#define` to disable FlatBuffers includes to simplify new project setup
+* Rename `Exception` to `DbException`
+* Minor improvements
+
+0.15.2 (2022-02-15)
+-------------------
 * Add store cloning
 * Fix attaching to a reopened store
 

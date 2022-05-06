@@ -19,7 +19,7 @@
 #include "objectbox-sync.h"
 #include "objectbox.hpp"
 
-static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 15 && OBX_VERSION_PATCH == 3,
+static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 16 && OBX_VERSION_PATCH == 0,
               "Versions of objectbox.h and objectbox-sync.hpp files do not match, please update");
 
 static_assert(sizeof(obx_id) == sizeof(OBX_id_array::ids[0]),
@@ -581,7 +581,7 @@ public:
     /// \note The model given via store_options is also used to verify the compatibility of the models presented by
     /// clients.
     ///       E.g. a client with an incompatible model will be rejected during login.
-    /// @param storeOptions Options for the server's store.
+    /// @param storeOptions Options for the server's store. Will be "consumed"; do not use the Options object again.
     /// @param uri The URI (following the pattern protocol:://IP:port) the server should listen on.
     ///        Supported \b protocols are "ws" (WebSockets) and "wss" (secure WebSockets).
     ///        To use the latter ("wss"), you must also call obx_sync_server_certificate_path().
@@ -591,10 +591,8 @@ public:
     ///        an arbitrary port that is available. The port can be queried via obx_sync_server_port() once the server
     ///        was started. \b Examples: "ws://0.0.0.0:9999" could be used during development (no certificate config
     ///        needed), while in a production system, you may want to use wss and a specific IP for security reasons.
-    // TODO also offer SyncServer(const Store::Options& storeOptions, const std::string& uri)
-    explicit SyncServer(Store::Options&& storeOptions, const std::string& uri) {
+    explicit SyncServer(Options& storeOptions, const std::string& uri) {
         cPtr_ = checkPtrOrThrow(obx_sync_server(storeOptions.release(), uri.c_str()), "Could not create SyncServer");
-
         try {
             OBX_store* cStore = checkPtrOrThrow(obx_sync_server_store(cPtr_), "Can't get SyncServer's store");
             store_.reset(new Store(cStore, false));
@@ -603,6 +601,9 @@ public:
             throw;
         }
     }
+
+    /// Rvalue variant of SyncServer(Options& storeOptions, const std::string& uri) that works equivalently.
+    explicit SyncServer(Options&& storeOptions, const std::string& uri) : SyncServer((Options&) storeOptions, uri) {}
 
     SyncServer(SyncServer&& source) noexcept : cPtr_(source.cPtr_) {
         source.cPtr_ = nullptr;

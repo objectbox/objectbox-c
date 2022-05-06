@@ -19,7 +19,7 @@
 int main(int argc, char* argv[]) {
     // create_obx_model() provided by objectbox-model.h
     // obx interface contents provided by objectbox.hpp
-    obx::Store::Options options(create_obx_model());
+    obx::Options options(create_obx_model());
 
     if (int err = processArgs(argc, argv, options)) {
         return err;

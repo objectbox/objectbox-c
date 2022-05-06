@@ -50,8 +50,8 @@ extern "C" {
 /// When using ObjectBox as a dynamic library, you should verify that a compatible version was linked using
 /// obx_version() or obx_version_is_at_least().
 #define OBX_VERSION_MAJOR 0
-#define OBX_VERSION_MINOR 15
-#define OBX_VERSION_PATCH 3  // values >= 100 are reserved for dev releases leading to the next minor/major increase
+#define OBX_VERSION_MINOR 16
+#define OBX_VERSION_PATCH 0  // values >= 100 are reserved for dev releases leading to the next minor/major increase
 
 //----------------------------------------------
 // Common types

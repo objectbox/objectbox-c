@@ -36,7 +36,7 @@ int main(int argc, char* argv[]) {
 
     // create_obx_model() provided by objectbox-model.h
     // obx interface contents provided by objectbox.hpp
-    Store::Options storeOptions(create_obx_model());
+    Options storeOptions(create_obx_model());
 
     if (int err = processArgs(argc, argv, storeOptions)) {
         return err;

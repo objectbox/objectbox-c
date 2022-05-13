@@ -56,6 +56,9 @@ elif [[ "$os" == "Darwin" ]]; then
     os=MacOS
     arch=universal
     echo "Adjusted OS to $os and architecture to $arch"
+elif [[ "$(uname -o)" == "Android" ]]; then
+    os=Android
+    echo "Adjusted OS to $os"
 fi
 
 if [[ $arch == "x86_64" ]]; then
@@ -92,6 +95,9 @@ elif [[ "$os" = "Windows" ]]; then
     if [ -x "$(command -v gcc)" ] && [ -x "$(command -v dirname)" ] && [ -x "$(command -v realpath)" ]; then
         libDirectory=$(realpath "$(dirname "$(command -v gcc)")/../lib")
     fi
+elif [[ "$os" = "Android"]]; then
+    libFileName=libobjectbox.so
+    libDirectory=$PREFIX/lib
 else
     libFileName=libobjectbox.so
     libDirectory=/usr/lib

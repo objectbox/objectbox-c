@@ -95,7 +95,7 @@ elif [[ "$os" = "Windows" ]]; then
     if [ -x "$(command -v gcc)" ] && [ -x "$(command -v dirname)" ] && [ -x "$(command -v realpath)" ]; then
         libDirectory=$(realpath "$(dirname "$(command -v gcc)")/../lib")
     fi
-elif [[ "$os" = "Android"]]; then
+elif [[ "$os" = "Android" ]]; then
     libFileName=libobjectbox.so
     libDirectory=$PREFIX/lib
 else

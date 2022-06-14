@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
+#define OBX_CPP_FILE
 #include "tasklist-example-app.hpp"
-
 
 using namespace obx;
 

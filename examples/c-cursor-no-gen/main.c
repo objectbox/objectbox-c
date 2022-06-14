@@ -159,7 +159,7 @@ void do_action_help(char* program_path) {
 //--------------------------------------------------------------------------------------------------------------------
 
 int do_action_new(OBX_store* store, int argc, char* argv[]) {
-    char* text = NULL;
+    char* text = "n/a";
     void* buff = NULL;
     size_t size = 0;
     OBX_txn* txn = NULL;

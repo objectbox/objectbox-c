@@ -3,6 +3,18 @@
 ObjectBox C and C++ API Changelog
 =================================
 
+0.17.0 (2022-06-14)
+-------------------
+* Added a "weak store" API providing weak reference for stores (typically used by background threads)
+* Added Store ID API, e.g. getting a store by its ID
+* Various internal improvements including minor optimizations for binary size and performance
+
+### C++
+
+* New "OBX_CPP_FILE" define to place declarations in a single .cpp/.cc file: improves compilation time and results
+* New "Exception" base class for all thrown exceptions
+* Various internal improvements, e.g. a "internal" namespace to better distinguish from userland API
+
 0.16.0 (2022-05-06)
 -------------------
 * Allow UTF-8 for database directories on Windows (available for other platforms before)

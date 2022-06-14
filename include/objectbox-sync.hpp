@@ -19,7 +19,7 @@
 #include "objectbox-sync.h"
 #include "objectbox.hpp"
 
-static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 16 && OBX_VERSION_PATCH == 0,
+static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 17 && OBX_VERSION_PATCH == 0,
               "Versions of objectbox.h and objectbox-sync.hpp files do not match, please update");
 
 static_assert(sizeof(obx_id) == sizeof(OBX_id_array::ids[0]),
@@ -179,8 +179,9 @@ class SyncClient : public Closable {
 public:
     /// Creates a sync client associated with the given store and options.
     /// This does not initiate any connection attempts yet: call start() to do so.
-    explicit SyncClient(Store& store, const std::string& serverUri, const SyncCredentials& creds) : store_(store) {
-        cSync_ = checkPtrOrThrow(obx_sync(store.cPtr(), serverUri.c_str()), "can't initialize sync client");
+    explicit SyncClient(Store& store, const std::string& serverUri, const SyncCredentials& creds)
+        : store_(store), cSync_(obx_sync(store.cPtr(), serverUri.c_str())) {
+        internal::checkPtrOrThrow(cSync_, "Could not initialize sync client");
         try {
             setCredentials(creds);
         } catch (...) {
@@ -193,8 +194,8 @@ public:
     /// This does not initiate any connection attempts yet: call start() to do so.
     /// @param cSync an initialized sync client. You must NOT call obx_sync_close() yourself anymore.
     explicit SyncClient(Store& store, OBX_sync* cSync) : store_(store), cSync_(cSync) {
-        OBJECTBOX_VERIFY_STATE(obx_has_feature(OBXFeature_Sync));
-        OBJECTBOX_VERIFY_ARGUMENT(cSync);
+        OBX_VERIFY_STATE(obx_has_feature(OBXFeature_Sync));
+        OBX_VERIFY_ARGUMENT(cSync);
     }
 
     /// Can't be moved due to the atomic cSync_ - use shared_ptr instead of SyncClient instances directly.
@@ -230,8 +231,9 @@ public:
     /// Configure authentication credentials.
     /// The accepted OBXSyncCredentials type depends on your sync-server configuration.
     void setCredentials(const SyncCredentials& creds) {
-        checkErrOrThrow(obx_sync_credentials(cPtr(), creds.type_, creds.data_.empty() ? nullptr : creds.data_.data(),
-                                             creds.data_.size()));
+        obx_err err = obx_sync_credentials(cPtr(), creds.type_, creds.data_.empty() ? nullptr : creds.data_.data(),
+                                           creds.data_.size());
+        internal::checkErrOrThrow(err);
     }
 
     /// Sets the interval in which the client sends "heartbeat" messages to the server, keeping the connection alive.
@@ -241,21 +243,21 @@ public:
     /// @param interval default value is 25 minutes (1 500 000 milliseconds), which is also the allowed maximum.
     /// @throws if value is not in the allowed range, e.g. larger than the maximum (1 500 000).
     void setHeartbeatInterval(std::chrono::milliseconds interval) {
-        checkErrOrThrow(obx_sync_heartbeat_interval(cPtr(), interval.count()));
+        internal::checkErrOrThrow(obx_sync_heartbeat_interval(cPtr(), interval.count()));
     }
 
     /// Triggers the heartbeat sending immediately.
-    void sendHeartbeat() { checkErrOrThrow(obx_sync_send_heartbeat(cPtr())); }
+    void sendHeartbeat() { internal::checkErrOrThrow(obx_sync_send_heartbeat(cPtr())); }
 
     /// Configures how sync updates are received from the server.
     /// If automatic sync updates are turned off, they will need to be requested manually.
     void setRequestUpdatesMode(OBXRequestUpdatesMode mode) {
-        checkErrOrThrow(obx_sync_request_updates_mode(cPtr(), mode));
+        internal::checkErrOrThrow(obx_sync_request_updates_mode(cPtr(), mode));
     }
 
     /// Configures the maximum number of outgoing TX messages that can be sent without an ACK from the server.
     /// @throws if value is not in the valid range 1-20
-    void maxMessagesInFlight(int value) { checkErrOrThrow(obx_sync_max_messages_in_flight(cPtr(), value)); }
+    void maxMessagesInFlight(int value) { internal::checkErrOrThrow(obx_sync_max_messages_in_flight(cPtr(), value)); }
 
     /// Once the sync client is configured, you can "start" it to initiate synchronization.
     /// This method triggers communication in the background and will return immediately.
@@ -264,21 +266,21 @@ public:
     /// If the device, network or server is currently offline, connection attempts will be retried later using
     /// increasing backoff intervals.
     /// If you haven't set the credentials in the options during construction, call setCredentials() before start().
-    void start() { checkErrOrThrow(obx_sync_start(cPtr())); }
+    void start() { internal::checkErrOrThrow(obx_sync_start(cPtr())); }
 
     /// Stops this sync client. Does nothing if it is already stopped.
-    void stop() { checkErrOrThrow(obx_sync_stop(cPtr())); }
+    void stop() { internal::checkErrOrThrow(obx_sync_stop(cPtr())); }
 
     /// Request updates since we last synchronized our database.
     /// @param subscribeForFuturePushes to keep sending us future updates as they come in.
     /// @see updatesCancel() to stop the updates
     bool requestUpdates(bool subscribeForFuturePushes) {
-        return checkSuccessOrThrow(obx_sync_updates_request(cPtr(), subscribeForFuturePushes));
+        return internal::checkSuccessOrThrow(obx_sync_updates_request(cPtr(), subscribeForFuturePushes));
     }
 
     /// Cancel updates from the server so that it will stop sending updates.
     /// @see updatesRequest()
-    bool cancelUpdates() { return checkSuccessOrThrow(obx_sync_updates_cancel(cPtr())); }
+    bool cancelUpdates() { return internal::checkSuccessOrThrow(obx_sync_updates_cancel(cPtr())); }
 
     /// Count the number of messages in the outgoing queue, i.e. those waiting to be sent to the server.
     /// Note: This calls uses a (read) transaction internally: 1) it's not just a "cheap" return of a single number.
@@ -287,7 +289,7 @@ public:
     /// @return the number of messages in the outgoing queue
     uint64_t outgoingMessageCount(uint64_t limit = 0) {
         uint64_t result;
-        checkErrOrThrow(obx_sync_outgoing_message_count(cPtr(), limit, &result));
+        internal::checkErrOrThrow(obx_sync_outgoing_message_count(cPtr(), limit, &result));
         return result;
     }
 
@@ -461,7 +463,7 @@ public:
 protected:
     OBX_sync* cPtr() const {
         OBX_sync* ptr = cSync_;
-        if (ptr == nullptr) throw std::runtime_error("Sync client was already closed");
+        if (ptr == nullptr) throw IllegalStateException("Sync client was already closed");
         return ptr;
     }
 
@@ -473,7 +475,7 @@ protected:
                 std::lock_guard<std::mutex> lock(store_.syncClientMutex_);
                 store_.syncClient_.reset();
             }
-            checkErrOrThrow(obx_sync_close(ptr));
+            internal::checkErrOrThrow(obx_sync_close(ptr));
         }
     }
 
@@ -533,7 +535,7 @@ public:
     static std::shared_ptr<SyncClient> client(Store& store, const std::string& serverUri,
                                               const SyncCredentials& creds) {
         std::lock_guard<std::mutex> lock(store.syncClientMutex_);
-        if (store.syncClient_) throw std::runtime_error("Only one sync client can be active for a store");
+        if (store.syncClient_) throw IllegalStateException("Only one sync client can be active for a store");
         store.syncClient_.reset(new SyncClient(store, serverUri, creds));
         return std::static_pointer_cast<SyncClient>(store.syncClient_);
     }
@@ -542,7 +544,7 @@ public:
     /// @param cSync an initialized sync client. You must NOT call obx_sync_close() yourself anymore.
     static std::shared_ptr<SyncClient> client(Store& store, OBX_sync* cSync) {
         std::lock_guard<std::mutex> lock(store.syncClientMutex_);
-        if (store.syncClient_) throw std::runtime_error("Only one sync client can be active for a store");
+        if (store.syncClient_) throw IllegalStateException("Only one sync client can be active for a store");
         store.syncClient_.reset(new SyncClient(store, cSync));
         return std::static_pointer_cast<SyncClient>(store.syncClient_);
     }
@@ -591,10 +593,12 @@ public:
     ///        an arbitrary port that is available. The port can be queried via obx_sync_server_port() once the server
     ///        was started. \b Examples: "ws://0.0.0.0:9999" could be used during development (no certificate config
     ///        needed), while in a production system, you may want to use wss and a specific IP for security reasons.
-    explicit SyncServer(Options& storeOptions, const std::string& uri) {
-        cPtr_ = checkPtrOrThrow(obx_sync_server(storeOptions.release(), uri.c_str()), "Could not create SyncServer");
+    explicit SyncServer(Options& storeOptions, const std::string& uri)
+        : cPtr_(obx_sync_server(storeOptions.release(), uri.c_str())) {
+        internal::checkPtrOrThrow(cPtr_, "Could not create SyncServer");
         try {
-            OBX_store* cStore = checkPtrOrThrow(obx_sync_server_store(cPtr_), "Can't get SyncServer's store");
+            OBX_store* cStore = obx_sync_server_store(cPtr_);
+            internal::checkPtrOrThrow(cStore, "Could not get SyncServer's store");
             store_.reset(new Store(cStore, false));
         } catch (...) {
             close();
@@ -623,7 +627,7 @@ public:
 
     /// The store that is associated with this server.
     Store& store() {
-        OBJECTBOX_VERIFY_STATE(store_);
+        OBX_VERIFY_STATE(store_);
         return *store_;
     }
 
@@ -634,7 +638,7 @@ public:
         cPtr_ = nullptr;
         store_.reset();
         if (ptr) {
-            checkErrOrThrow(obx_sync_server_close(ptr));
+            internal::checkErrOrThrow(obx_sync_server_close(ptr));
         }
     }
 
@@ -643,34 +647,36 @@ public:
 
     /// Sets SSL certificate for the server to use. Use before start().
     void setCertificatePath(const std::string& path) {
-        checkErrOrThrow(obx_sync_server_certificate_path(cPtr(), path.c_str()));
+        internal::checkErrOrThrow(obx_sync_server_certificate_path(cPtr(), path.c_str()));
     }
 
     /// Sets credentials for the server to accept. Use before start().
     /// @param data may be NULL in combination with OBXSyncCredentialsType_NONE
     void setCredentials(const SyncCredentials& creds) {
-        checkErrOrThrow(obx_sync_server_credentials(
+        internal::checkErrOrThrow(obx_sync_server_credentials(
             cPtr(), creds.type_, creds.data_.empty() ? nullptr : creds.data_.data(), creds.data_.size()));
     }
 
     /// Once the sync server is configured, you can "start" it to start accepting client connections.
     /// This method triggers communication in the background and will return immediately.
-    void start() { checkErrOrThrow(obx_sync_server_start(cPtr())); }
+    void start() { internal::checkErrOrThrow(obx_sync_server_start(cPtr())); }
 
     /// Stops this sync server. Does nothing if it is already stopped.
-    void stop() { checkErrOrThrow(obx_sync_server_stop(cPtr())); }
+    void stop() { internal::checkErrOrThrow(obx_sync_server_stop(cPtr())); }
 
     /// Returns if this sync server is running
     bool isRunning() { return obx_sync_server_running(cPtr()); }
 
     /// Returns a URL this server is listening on, including the bound port (see port().
-    std::string url() { return checkPtrOrThrow(obx_sync_server_url(cPtr()), "Can't get SyncServer bound URL"); }
+    std::string url() {
+        return internal::checkedPtrOrThrow(obx_sync_server_url(cPtr()), "Can't get SyncServer bound URL");
+    }
 
     /// Returns a port this server listens on. This is especially useful if the bindUri given to the constructor
     /// specified "0" port (i.e. automatic assignment).
     uint16_t port() {
         uint16_t result = obx_sync_server_port(cPtr());
-        if (!result) throwLastError();
+        if (!result) internal::throwLastError();
         return result;
     }
 
@@ -679,8 +685,8 @@ public:
 
     /// Get server runtime statistics.
     std::string statsString(bool includeZeroValues = true) {
-        return checkPtrOrThrow(obx_sync_server_stats_string(cPtr(), includeZeroValues),
-                               "Can't get SyncServer stats string");
+        const char* serverStatsString = obx_sync_server_stats_string(cPtr(), includeZeroValues);
+        return internal::checkedPtrOrThrow(serverStatsString, "Can't get SyncServer stats string");
     }
 
     void setChangeListener(std::shared_ptr<SyncChangeListener> listener) {
@@ -723,7 +729,7 @@ public:
 protected:
     OBX_sync_server* cPtr() const {
         OBX_sync_server* ptr = cPtr_;
-        if (ptr == nullptr) throw std::runtime_error("Sync server was already closed");
+        if (ptr == nullptr) throw IllegalStateException("Sync server was already closed");
         return ptr;
     }
 };

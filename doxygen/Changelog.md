@@ -3,7 +3,7 @@
 ObjectBox C and C++ API Changelog
 =================================
 
-0.17.0 (2022-06-14)
+0.17.0 (2022-06-15)
 -------------------
 * Added a "weak store" API providing weak reference for stores (typically used by background threads)
 * Added Store ID API, e.g. getting a store by its ID

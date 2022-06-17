@@ -1,13 +1,10 @@
 ObjectBox Embedded Database for C and C++
 =========================================
-
-**Your opinion matters to us!** 👉 Please fill in this 2-minute [Anonymous Feedback Form](https://forms.gle/LvVjN6jfFHuivxZX6) 🙏
-
-[ObjectBox](https://objectbox.io) is a superfast C and C++ database for embedded devices (Mobile and IoT), desktop and server apps.
-The out-of-the-box [Data Sync](https://objectbox.io/sync/) keeps data harmonized across devices and any kind of backend/cloud reliably. ObjectBox Database and Sync is ideal for reliable resource-efficiency and speed on restricted devices and out-of-the-box differential sync of data in offline settings or scenarios including occasionally connected devices.
+[ObjectBox](https://objectbox.io) is a superfast C and C++ database for embedded devices (mobile and IoT), desktop and server apps.
+The out-of-the-box [Data Sync](https://objectbox.io/sync/) keeps data in sync across devices and any kind of backend/cloud reliably for occasionally connected devices.
 ObjectBox Data Persistence and Data Sync follows an offline-first approach and can be used on-premise as well as with a cloud setup.
 
-This is the **ObjectBox runtime library** to run ObjectBox as an [embedded database](https://objectbox.io/embedded-database/) in your C or C++ application.
+This is the **ObjectBox runtime library** to run ObjectBox as an embedded database in your C or C++ application.
 
 Here's a C++ example that inserts a `Task` data object (a plain user defined `struct`) into the database:
 ```c++
@@ -123,7 +120,7 @@ Besides C/C++, ObjectBox also offers:
 
 How can I help ObjectBox?
 ---------------------------
-Let us know what you love, what you don’t like, and what you'd want to see next ❤️
+Let us know what you love, what you don’t, what do you want to see next?
 
 **We're looking forward to receiving your comments and requests:**
 

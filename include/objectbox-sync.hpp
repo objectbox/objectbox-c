@@ -19,11 +19,8 @@
 #include "objectbox-sync.h"
 #include "objectbox.hpp"
 
-static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 17 && OBX_VERSION_PATCH == 0,
+static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 17 && OBX_VERSION_PATCH == 0,  // NOLINT
               "Versions of objectbox.h and objectbox-sync.hpp files do not match, please update");
-
-static_assert(sizeof(obx_id) == sizeof(OBX_id_array::ids[0]),
-              "Can't directly link OBX_id_array.ids to std::vector<obx_id>::data()");
 
 namespace obx {
 
@@ -61,6 +58,8 @@ public:
 /// Listens to login events on a sync client.
 class SyncClientLoginListener {
 public:
+    virtual ~SyncClientLoginListener() {}
+
     /// Called on a successful login.
     /// At this point the connection to the sync destination was established and
     /// entered an operational state, in which data can be sent both ways.
@@ -73,6 +72,8 @@ public:
 /// Listens to sync client connection events.
 class SyncClientConnectionListener {
 public:
+    virtual ~SyncClientConnectionListener() {}
+
     /// Called when connection is established (on first connect or after a reconnection).
     virtual void connected() noexcept = 0;
 
@@ -85,6 +86,8 @@ public:
 /// Listens to sync complete event on a sync client.
 class SyncClientCompletionListener {
 public:
+    virtual ~SyncClientCompletionListener() {}
+
     /// Called each time a sync completes, in the sense that the client has caught up with the current server state.
     /// Or in other words, when the client is "up-to-date".
     virtual void updatesCompleted() noexcept = 0;
@@ -95,6 +98,8 @@ class SyncClientTimeListener {
 public:
     using TimePoint = std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds>;
 
+    virtual ~SyncClientTimeListener() {}
+
     /// Called when a server time information is received on the client.
     /// @param time - current server timestamp since Unix epoch
     virtual void serverTime(TimePoint time) noexcept = 0;
@@ -103,7 +108,7 @@ public:
 /// A collection of changes made to one entity type during a sync transaction. Delivered via SyncClientChangeListener.
 /// IDs of changed objects are available via `puts` and those of removed objects via `removals`.
 struct SyncChange {
-    obx_schema_id entityId;
+    obx_schema_id entityId = 0;
     std::vector<obx_id> puts;
     std::vector<obx_id> removals;
 };
@@ -112,6 +117,8 @@ struct SyncChange {
 /// @note this may affect performance. Use SyncClientCompletionListener for the general synchronization-finished check.
 class SyncChangeListener {
 public:
+    virtual ~SyncChangeListener() {}
+
     /// Called each time when data `changes` from sync were applied locally.
     virtual void changed(const std::vector<SyncChange>& changes) noexcept = 0;
 
@@ -134,12 +141,11 @@ private:
     }
 
     void copyIdVector(const OBX_id_array* in, std::vector<obx_id>& out) {
-        static_assert(sizeof(in->ids[0]) == sizeof(out[0]), "Can't directly copy OBX_id_array to std::vector<obx_id>");
-        if (!in) {
-            out.clear();
-        } else {
+        if (in) {
             out.resize(in->count);
             memcpy(out.data(), in->ids, sizeof(out[0]) * out.size());
+        } else {
+            out.clear();
         }
     }
 };
@@ -153,6 +159,8 @@ class SyncClientListener : public SyncClientLoginListener,
 
 class SyncObjectsMessageListener {
 public:
+    virtual ~SyncObjectsMessageListener() {}
+
     // TODO do we want to transform to a more c++ friendly representation, like in other listeners?
     virtual void received(const OBX_sync_msg_objects* cObjects) noexcept = 0;
 };
@@ -204,7 +212,7 @@ public:
     /// Can't be copied, single owner of C resources is required (to avoid double-free during destruction)
     SyncClient(const SyncClient&) = delete;
 
-    virtual ~SyncClient() {
+    ~SyncClient() override {
         try {
             closeNonVirtual();
         } catch (...) {
@@ -243,7 +251,7 @@ public:
     /// @param interval default value is 25 minutes (1 500 000 milliseconds), which is also the allowed maximum.
     /// @throws if value is not in the allowed range, e.g. larger than the maximum (1 500 000).
     void setHeartbeatInterval(std::chrono::milliseconds interval) {
-        internal::checkErrOrThrow(obx_sync_heartbeat_interval(cPtr(), interval.count()));
+        internal::checkErrOrThrow(obx_sync_heartbeat_interval(cPtr(), static_cast<uint64_t>(interval.count())));
     }
 
     /// Triggers the heartbeat sending immediately.
@@ -420,7 +428,7 @@ public:
         Guard lock(listeners_.mutex);
 
         // if it was previously set, unassign in the core before (potentially) destroying the object
-        bool forceRemove = listeners_.combined.get() != nullptr;
+        bool forceRemove = listeners_.combined != nullptr;
         removeLoginListener(forceRemove);
         removeCompletionListener(forceRemove);
         removeConnectionListener(forceRemove);
@@ -607,7 +615,8 @@ public:
     }
 
     /// Rvalue variant of SyncServer(Options& storeOptions, const std::string& uri) that works equivalently.
-    explicit SyncServer(Options&& storeOptions, const std::string& uri) : SyncServer((Options&) storeOptions, uri) {}
+    explicit SyncServer(Options&& storeOptions, const std::string& uri)
+        : SyncServer(static_cast<Options&>(storeOptions), uri) {}
 
     SyncServer(SyncServer&& source) noexcept : cPtr_(source.cPtr_) {
         source.cPtr_ = nullptr;
@@ -676,7 +685,7 @@ public:
     /// specified "0" port (i.e. automatic assignment).
     uint16_t port() {
         uint16_t result = obx_sync_server_port(cPtr());
-        if (!result) internal::throwLastError();
+        if (result == 0) internal::throwLastError();
         return result;
     }
 

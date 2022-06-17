@@ -39,12 +39,12 @@
 static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 17 && OBX_VERSION_PATCH == 0,  // NOLINT
               "Versions of objectbox.h and objectbox.hpp files do not match, please update");
 
-static_assert(sizeof(obx_id) == sizeof(OBX_id_array::ids[0]),
-              "Can not directly link OBX_id_array.ids to std::vector<obx_id>::data()");
-
 #ifdef __clang__
 #pragma clang diagnostic push
-#pragma ide diagnostic ignored "OCUnusedGlobalDeclarationInspection"  // It's an API, so it's normal to not use all
+#pragma clang diagnostic ignored "-Wunknown-pragmas"  // So we can have the next pragma with strict compiler settings
+#pragma clang diagnostic ignored "-Wunused-function"  // It's an API, so it's normal to use parts only
+#pragma ide diagnostic ignored "OCUnusedGlobalDeclarationInspection"  // It's an API, so it's normal to use parts only
+#pragma ide diagnostic ignored "readability-else-after-return"        // They way it's used here improves readability
 #endif
 
 namespace obx {
@@ -231,7 +231,7 @@ public:
     }
 
     /// @deprecated is this used by generator?
-    Options(OBX_model* model) : Options() { this->model(model); }
+    explicit Options(OBX_model* model) : Options() { this->model(model); }
 
     ~Options() { obx_opt_free(opt); }
 
@@ -508,7 +508,7 @@ public:
     explicit Store(Options& options)
         : Store(internal::checkedPtrOrThrow(obx_store_open(options.release()), "Can not open store"), true) {}
 
-    explicit Store(Options&& options) : Store((Options&) options) {}
+    explicit Store(Options&& options) : Store(options) {}
 
     /// Wraps an existing C-API store pointer, taking ownership (don't close it manually anymore)
     explicit Store(OBX_store* cStore) : Store(cStore, true) {}
@@ -689,27 +689,38 @@ template <typename EntityT>
 struct CollectingVisitor {
     std::vector<std::unique_ptr<EntityT>> items;
 
-    static bool visit(void* ptr, const void* data, size_t size) {
-        auto self = reinterpret_cast<CollectingVisitor<EntityT>*>(ptr);
+    static bool visit(void* userData, const void* data, size_t size) {
+        auto self = static_cast<CollectingVisitor<EntityT>*>(userData);
         self->items.emplace_back(new EntityT());
         EntityT::_OBX_MetaInfo::fromFlatBuffer(data, size, *(self->items.back()));
         return true;
     }
 };
 
+}  // namespace
+
+namespace internal {
+
 /// Produces an OBX_id_array with internal data referencing the given ids vector. You must
 /// ensure the given vector outlives the returned OBX_id_array. Additionally, you must NOT call
 /// obx_id_array_free(), because the result is not allocated by C, thus it must not free it.
-OBX_id_array cIdArrayRef(const std::vector<obx_id>& ids) {
-    return {ids.empty() ? nullptr : const_cast<obx_id*>(ids.data()), ids.size()};
-}
+const OBX_id_array cIdArrayRef(const std::vector<obx_id>& ids);
 
 /// Consumes an OBX_id_array, producing a vector of IDs and freeing the array afterwards.
 /// Must be called right after the C-API call producing cIds in order to check and throw on error correctly.
 /// Example: idVectorOrThrow(obx_query_find_ids(cQuery_, offset_, limit_))
 /// Note: even if this function throws the given OBX_id_array is freed.
+std::vector<obx_id> idVectorOrThrow(OBX_id_array* cIds);
+
+#ifdef OBX_CPP_FILE
+const OBX_id_array cIdArrayRef(const std::vector<obx_id>& ids) {
+    // Note: removing const from ids.data() to match the C struct, but returning struct as const; so it should be OK:
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
+    return {ids.empty() ? nullptr : const_cast<obx_id*>(ids.data()), ids.size()};
+}
+
 std::vector<obx_id> idVectorOrThrow(OBX_id_array* cIds) {
-    if (!cIds) internal::throwLastError();
+    if (cIds == nullptr) internal::throwLastError();
 
     try {
         std::vector<obx_id> result;
@@ -725,6 +736,11 @@ std::vector<obx_id> idVectorOrThrow(OBX_id_array* cIds) {
         throw;
     }
 }
+#endif
+
+}  // namespace internal
+
+namespace {
 
 class QueryCondition;
 class QCGroup;
@@ -890,10 +906,10 @@ protected:
     /// could optimize out all the unused switch statements and variables (`value2`).
     [[noreturn]] void throwInvalidOperation() const {
         internal::throwIllegalStateException("Invalid condition - operation not supported: ",
-                                             std::to_string(int(op_)).c_str());
+                                             std::to_string(static_cast<int>(op_)).c_str());
     }
 
-    obx_qb_cond applyTo(OBX_query_builder* cqb, bool) const override {
+    obx_qb_cond applyTo(OBX_query_builder* cqb, bool /*isRoot*/) const override {
         if (op_ == QueryOp::Null) {
             return obx_qb_null(cqb, propId_);
         } else if (op_ == QueryOp::NotNull) {
@@ -914,7 +930,7 @@ public:
 protected:
     std::unique_ptr<QueryCondition> copyAsPtr() const override { return QueryCondition::copyAsPtr(*this); };
 
-    obx_qb_cond applyTo(OBX_query_builder* cqb, bool) const override {
+    obx_qb_cond applyTo(OBX_query_builder* cqb, bool /*isRoot*/) const override {
         if (op_ == QueryOp::Equal) {
             return obx_qb_equals_int(cqb, propId_, value1_);
         } else if (op_ == QueryOp::NotEqual) {
@@ -945,7 +961,7 @@ public:
 protected:
     std::unique_ptr<QueryCondition> copyAsPtr() const override { return QueryCondition::copyAsPtr(*this); };
 
-    obx_qb_cond applyTo(OBX_query_builder* cqb, bool) const override {
+    obx_qb_cond applyTo(OBX_query_builder* cqb, bool /*isRoot*/) const override {
         if (op_ == QueryOp::Less) {
             return obx_qb_less_than_double(cqb, propId_, value1_);
         } else if (op_ == QueryOp::LessOrEq) {
@@ -971,7 +987,7 @@ public:
 protected:
     std::unique_ptr<QueryCondition> copyAsPtr() const override { return QueryCondition::copyAsPtr(*this); };
 
-    obx_qb_cond applyTo(OBX_query_builder* cqb, bool) const override {
+    obx_qb_cond applyTo(OBX_query_builder* cqb, bool /*isRoot*/) const override {
         if (op_ == QueryOp::In) {
             return obx_qb_in_int32s(cqb, propId_, values_.data(), values_.size());
         } else if (op_ == QueryOp::NotIn) {
@@ -991,7 +1007,7 @@ public:
 protected:
     std::unique_ptr<QueryCondition> copyAsPtr() const override { return QueryCondition::copyAsPtr(*this); };
 
-    obx_qb_cond applyTo(OBX_query_builder* cqb, bool) const override {
+    obx_qb_cond applyTo(OBX_query_builder* cqb, bool /*isRoot*/) const override {
         if (op_ == QueryOp::In) {
             return obx_qb_in_int64s(cqb, propId_, values_.data(), values_.size());
         } else if (op_ == QueryOp::NotIn) {
@@ -1013,7 +1029,7 @@ public:
 protected:
     std::unique_ptr<QueryCondition> copyAsPtr() const override { return QueryCondition::copyAsPtr(*this); };
 
-    obx_qb_cond applyTo(OBX_query_builder* cqb, bool) const override {
+    obx_qb_cond applyTo(OBX_query_builder* cqb, bool /*isRoot*/) const override {
         if (PropertyType == OBXPropertyType_String) {
             if (op_ == QueryOp::Equal) {
                 return obx_qb_equals_string(cqb, propId_, value_.c_str(), caseSensitive_);
@@ -1057,7 +1073,7 @@ public:
 protected:
     std::unique_ptr<QueryCondition> copyAsPtr() const override { return QueryCondition::copyAsPtr(*this); };
 
-    obx_qb_cond applyTo(OBX_query_builder* cqb, bool) const override {
+    obx_qb_cond applyTo(OBX_query_builder* cqb, bool /*isRoot*/) const override {
         // don't make an instance variable - it's not trivially copyable by copyAsPtr() and is usually called just once
         std::vector<const char*> cvalues;
         cvalues.resize(values_.size());
@@ -1084,7 +1100,7 @@ public:
 protected:
     std::unique_ptr<QueryCondition> copyAsPtr() const override { return QueryCondition::copyAsPtr(*this); };
 
-    obx_qb_cond applyTo(OBX_query_builder* cqb, bool) const override {
+    obx_qb_cond applyTo(OBX_query_builder* cqb, bool /*isRoot*/) const override {
         if (op_ == QueryOp::Equal) {
             return obx_qb_equals_bytes(cqb, propId_, value_.data(), value_.size());
         } else if (op_ == QueryOp::Less) {
@@ -1119,7 +1135,7 @@ using EnableIfFloating = enable_if_t<T == OBXPropertyType_Float || T == OBXPrope
 template <OBXPropertyType T>
 using EnableIfDate = enable_if_t<T == OBXPropertyType_Date || T == OBXPropertyType_DateNano>;
 
-static constexpr OBXPropertyType typeless = OBXPropertyType(0);
+constexpr OBXPropertyType typeless = static_cast<OBXPropertyType>(0);
 }  // namespace
 
 /// Typeless property used as a base class for other types - sharing common conditions.
@@ -1401,7 +1417,7 @@ public:
 };
 
 /// Carries property-based to-one relation information when used in the entity-meta ("underscore") class
-template <typename SourceEntityT, typename TargetEntityT>
+template <typename SourceEntityT, typename TargetEntityT>  // NOLINT TargetEntityT may be used in the future
 class RelationProperty : public Property<SourceEntityT, OBXPropertyType_Relation> {
 public:
     explicit constexpr RelationProperty(obx_schema_id id) noexcept
@@ -1464,7 +1480,7 @@ public:
     /// @return the reference to the same QueryBuilder for fluent interface.
     template <OBXPropertyType PropType>
     QueryBuilder& order(Property<EntityT, PropType> property, int flags = 0) {
-        internal::checkErrOrThrow(obx_qb_order(cQueryBuilder_, property.id(), OBXOrderFlags(flags)));
+        internal::checkErrOrThrow(obx_qb_order(cQueryBuilder_, property.id(), static_cast<OBXOrderFlags>(flags)));
         return *this;
     }
 
@@ -1628,7 +1644,7 @@ public:
 #endif
 
     /// Returns IDs of all matching objects.
-    std::vector<obx_id> findIds() { return idVectorOrThrow(obx_query_find_ids(cQuery_)); }
+    std::vector<obx_id> findIds() { return internal::idVectorOrThrow(obx_query_find_ids(cQuery_)); }
 
     /// Returns the number of matching objects.
     uint64_t count() {
@@ -1878,7 +1894,7 @@ public:
         if (ids.empty()) return true;
 
         bool result;
-        const OBX_id_array cIds = cIdArrayRef(ids);
+        const OBX_id_array cIds = internal::cIdArrayRef(ids);
         internal::checkErrOrThrow(obx_box_contains_many(cBox_, &cIds, &result));
         return result;
     }
@@ -1962,6 +1978,8 @@ public:
     /// already specified (non-zero), it will remain unchanged.
     /// @return object ID from the object param (see object param docs).
     obx_id put(EntityT& object, OBXPutMode mode = OBXPutMode_PUT) {
+        // Using a const_cast to add "const" only to identify the method overload:
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
         obx_id id = put(const_cast<const EntityT&>(object), mode);
         EntityBinding::setObjectId(object, id);
         return id;
@@ -2031,7 +2049,7 @@ public:
     /// @returns number of removed objects between 0 and ids.size() (if all IDs existed)
     uint64_t remove(const std::vector<obx_id>& ids) {
         uint64_t result = 0;
-        const OBX_id_array cIds = cIdArrayRef(ids);
+        const OBX_id_array cIds = internal::cIdArrayRef(ids);
         internal::checkErrOrThrow(obx_box_remove_many(cBox_, &cIds, &result));
         return result;
     }
@@ -2071,7 +2089,7 @@ public:
     std::vector<obx_id> backlinkIds(RelationProperty<SourceEntityT, TargetEntityT> toOneRel, obx_id objectId) {
         static_assert(std::is_same<SourceEntityT, EntityT>::value,
                       "Given property (to-one relation) doesn't belong to this box - entity type mismatch");
-        return idVectorOrThrow(obx_box_get_backlink_ids(cBox_, toOneRel.id(), objectId));
+        return internal::idVectorOrThrow(obx_box_get_backlink_ids(cBox_, toOneRel.id(), objectId));
     }
 
     /// Replace the list of standalone relation target objects on the given source object.
@@ -2142,7 +2160,7 @@ public:
     /// @todo improve docs by providing an example with a clear distinction between source and target type
     template <typename SourceEntityT>
     std::vector<obx_id> standaloneRelIds(RelationStandalone<SourceEntityT, EntityT> toManyRel, obx_id objectId) {
-        return idVectorOrThrow(obx_box_rel_get_ids(cBox_, toManyRel.id(), objectId));
+        return internal::idVectorOrThrow(obx_box_rel_get_ids(cBox_, toManyRel.id(), objectId));
     }
 
     /// Fetch IDs of all objects in this Box related to the given object (typically from another Box).
@@ -2153,7 +2171,7 @@ public:
     template <typename TargetEntityT>
     std::vector<obx_id> standaloneRelBacklinkIds(RelationStandalone<EntityT, TargetEntityT> toManyRel,
                                                  obx_id objectId) {
-        return idVectorOrThrow(obx_box_rel_get_backlink_ids(cBox_, toManyRel.id(), objectId));
+        return internal::idVectorOrThrow(obx_box_rel_get_backlink_ids(cBox_, toManyRel.id(), objectId));
     }
 
     /// Time series: get the limits (min/max time values) over all objects
@@ -2217,6 +2235,8 @@ private:
     }
 
     obx_id cursorPut(CursorTx& cursor, flatbuffers::FlatBufferBuilder& fbb, EntityT& object, OBXPutMode mode) {
+        // Using a const_cast to add "const" only to identify the method overload:
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
         obx_id id = cursorPut(cursor, fbb, const_cast<const EntityT&>(object), mode);
         EntityBinding::setObjectId(object, id);
         return id;
@@ -2316,6 +2336,8 @@ public:
     /// @param object will be updated with the reserved ID.
     /// @return the reserved ID which will be used for the object if the asynchronous insert succeeds.
     obx_id put(EntityT& object, OBXPutMode mode = OBXPutMode_PUT) {
+        // Using a const_cast to add "const" only to identify the method overload:
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
         obx_id id = put(const_cast<const EntityT&>(object), mode);
         EntityBinding::setObjectId(object, id);
         return id;

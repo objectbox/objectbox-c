@@ -17,6 +17,19 @@ See [ObjectBox C and C++ docs](https://cpp.objectbox.io/) for API details.
 **Latest version: 0.17.0** (2022-06-15).
 See [changelog](CHANGELOG.md) for more details.
 
+## Table of Contents:
+- [Feature Highlights](#feature-highlights)
+- [Usage and Installation](#usage-and-installation)
+- [C++ API](#c-api)
+- [Examples](#examples)
+- [Documentation](#documentation)
+- [Current state / Changelog](#current-state--changelog)
+   - [Supported platforms](#supported-platforms)
+- [C API as the Foundation for Higher Languages](#c-api-as-the-foundation-for-higher-languages)
+- [Other languages/bindings](#other-languagesbindings)
+- [How can I help ObjectBox?](#how-can-i-help-objectbox)
+- [License](#license)
+
 Feature Highlights
 ------------------
 🏁 **High performance** on restricted devices, like IoT gateways, micro controllers, ECUs etc.\

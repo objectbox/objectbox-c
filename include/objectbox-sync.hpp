@@ -19,7 +19,7 @@
 #include "objectbox-sync.h"
 #include "objectbox.hpp"
 
-static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 17 && OBX_VERSION_PATCH == 0,  // NOLINT
+static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 18 && OBX_VERSION_PATCH == 0,  // NOLINT
               "Versions of objectbox.h and objectbox-sync.hpp files do not match, please update");
 
 namespace obx {
@@ -58,7 +58,7 @@ public:
 /// Listens to login events on a sync client.
 class SyncClientLoginListener {
 public:
-    virtual ~SyncClientLoginListener() {}
+    virtual ~SyncClientLoginListener() = default;
 
     /// Called on a successful login.
     /// At this point the connection to the sync destination was established and
@@ -72,7 +72,7 @@ public:
 /// Listens to sync client connection events.
 class SyncClientConnectionListener {
 public:
-    virtual ~SyncClientConnectionListener() {}
+    virtual ~SyncClientConnectionListener() = default;
 
     /// Called when connection is established (on first connect or after a reconnection).
     virtual void connected() noexcept = 0;
@@ -86,7 +86,7 @@ public:
 /// Listens to sync complete event on a sync client.
 class SyncClientCompletionListener {
 public:
-    virtual ~SyncClientCompletionListener() {}
+    virtual ~SyncClientCompletionListener() = default;
 
     /// Called each time a sync completes, in the sense that the client has caught up with the current server state.
     /// Or in other words, when the client is "up-to-date".
@@ -98,7 +98,7 @@ class SyncClientTimeListener {
 public:
     using TimePoint = std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds>;
 
-    virtual ~SyncClientTimeListener() {}
+    virtual ~SyncClientTimeListener() = default;
 
     /// Called when a server time information is received on the client.
     /// @param time - current server timestamp since Unix epoch
@@ -117,7 +117,7 @@ struct SyncChange {
 /// @note this may affect performance. Use SyncClientCompletionListener for the general synchronization-finished check.
 class SyncChangeListener {
 public:
-    virtual ~SyncChangeListener() {}
+    virtual ~SyncChangeListener() = default;
 
     /// Called each time when data `changes` from sync were applied locally.
     virtual void changed(const std::vector<SyncChange>& changes) noexcept = 0;
@@ -159,10 +159,60 @@ class SyncClientListener : public SyncClientLoginListener,
 
 class SyncObjectsMessageListener {
 public:
-    virtual ~SyncObjectsMessageListener() {}
+    virtual ~SyncObjectsMessageListener() = default;
 
     // TODO do we want to transform to a more c++ friendly representation, like in other listeners?
     virtual void received(const OBX_sync_msg_objects* cObjects) noexcept = 0;
+};
+
+/// Start here to prepare an 'objects message'. You must add at least one object and then you can send the message
+/// using SyncClient::send() or SyncServer::send().
+class SyncObjectsMessageBuilder {
+    friend SyncClient;
+    friend SyncServer;
+
+    OBX_sync_msg_objects_builder* cBuilder_;
+
+    OBX_sync_msg_objects_builder* release() {
+        OBX_VERIFY_STATE(cBuilder_);
+        OBX_sync_msg_objects_builder* result = cBuilder_;
+        cBuilder_ = nullptr;
+        return result;
+    }
+
+public:
+    SyncObjectsMessageBuilder() : SyncObjectsMessageBuilder(nullptr, 0) {}
+
+    /// @param topic - application-specific message qualifier
+    explicit SyncObjectsMessageBuilder(const std::string& topic)
+        : SyncObjectsMessageBuilder(topic.c_str(), topic.size()) {}
+
+    /// @param topic - application-specific message qualifier (may be NULL), usually a string but can also be binary
+    explicit SyncObjectsMessageBuilder(const void* topic, size_t topicSize)
+        : cBuilder_(obx_sync_msg_objects_builder(topic, topicSize)) {}
+
+    SyncObjectsMessageBuilder(SyncObjectsMessageBuilder&& source) noexcept : cBuilder_(source.cBuilder_) {
+        source.cBuilder_ = nullptr;
+    }
+
+    /// Can't be copied, single owner of C resources is required (to avoid double-free during destruction)
+    SyncObjectsMessageBuilder(const SyncObjectsMessageBuilder&) = delete;
+
+    virtual ~SyncObjectsMessageBuilder() {
+        if (cBuilder_) obx_sync_msg_objects_builder_discard(cBuilder_);
+    }
+
+    /// Adds an object to the given message (builder).
+    /// @param id an optional (pass 0 if you don't need it) value that the application can use identify the object
+    void add(OBXSyncObjectType type, const void* data, size_t size, uint64_t id = 0) {
+        internal::checkErrOrThrow(obx_sync_msg_objects_builder_add(cBuilder_, type, data, size, id));
+    }
+
+    /// Adds a string object to the given message (builder).
+    /// @param id an optional (pass 0 if you don't need it) value that the application can use identify the object
+    void add(const std::string& object, uint64_t id = 0) {
+        add(OBXSyncObjectType_String, object.c_str(), object.size(), id);
+    }
 };
 
 /// Sync client is used to provide ObjectBox Sync client capabilities to your application.
@@ -180,6 +230,7 @@ class SyncClient : public Closable {
         std::shared_ptr<SyncChangeListener> change;
         std::shared_ptr<SyncClientTimeListener> time;
         std::shared_ptr<SyncClientListener> combined;
+        std::shared_ptr<SyncObjectsMessageListener> object;
     } listeners_;
 
     using Guard = std::lock_guard<std::mutex>;
@@ -187,8 +238,8 @@ class SyncClient : public Closable {
 public:
     /// Creates a sync client associated with the given store and options.
     /// This does not initiate any connection attempts yet: call start() to do so.
-    explicit SyncClient(Store& store, const std::string& serverUri, const SyncCredentials& creds)
-        : store_(store), cSync_(obx_sync(store.cPtr(), serverUri.c_str())) {
+    explicit SyncClient(Store& store, const std::string& serverUrl, const SyncCredentials& creds)
+        : store_(store), cSync_(obx_sync(store.cPtr(), serverUrl.c_str())) {
         internal::checkPtrOrThrow(cSync_, "Could not initialize sync client");
         try {
             setCredentials(creds);
@@ -244,6 +295,11 @@ public:
         internal::checkErrOrThrow(err);
     }
 
+    /// Triggers a reconnection attempt immediately.
+    /// By default, an increasing backoff interval is used for reconnection attempts.
+    /// But sometimes the user of this API has additional knowledge and can initiate a reconnection attempt sooner.
+    bool triggerReconnect() { return internal::checkSuccessOrThrow(obx_sync_trigger_reconnect(cPtr())); }
+
     /// Sets the interval in which the client sends "heartbeat" messages to the server, keeping the connection alive.
     /// To detect disconnects early on the client side, you can also use heartbeats with a smaller interval.
     /// Use with caution, setting a low value (i.e. sending heartbeat very often) may cause an excessive network usage
@@ -256,6 +312,11 @@ public:
 
     /// Triggers the heartbeat sending immediately.
     void sendHeartbeat() { internal::checkErrOrThrow(obx_sync_send_heartbeat(cPtr())); }
+
+    /// Sends the given 'objects message' from the client to the currently connected server.
+    void send(SyncObjectsMessageBuilder&& message) {
+        internal::checkErrOrThrow(obx_sync_send_msg_objects(cPtr(), message.release()));
+    }
 
     /// Configures how sync updates are received from the server.
     /// If automatic sync updates are turned off, they will need to be requested manually.
@@ -342,19 +403,22 @@ public:
     void setLoginListener(std::shared_ptr<SyncClientLoginListener> listener) {
         Guard lock(listeners_.mutex);
 
-        // if it was previosly set, unassign in the core before (potentially) destroying the object
+        // if it was previously set, unassign in the core before (potentially) destroying the object
         removeLoginListener();
 
         if (listener) {
             listeners_.login = std::move(listener);
-            void* arg = listeners_.login.get();
+            void* listenerPtr = listeners_.login.get();
 
             obx_sync_listener_login(
-                cPtr(), [](void* arg) { static_cast<SyncClientLoginListener*>(arg)->loggedIn(); }, arg);
+                cPtr(), [](void* userData) { static_cast<SyncClientLoginListener*>(userData)->loggedIn(); },
+                listenerPtr);
             obx_sync_listener_login_failure(
                 cPtr(),
-                [](void* arg, OBXSyncCode code) { static_cast<SyncClientLoginListener*>(arg)->loginFailed(code); },
-                arg);
+                [](void* userData, OBXSyncCode code) {
+                    static_cast<SyncClientLoginListener*>(userData)->loginFailed(code);
+                },
+                listenerPtr);
         }
     }
 
@@ -380,12 +444,14 @@ public:
 
         if (listener) {
             listeners_.connect = std::move(listener);
-            void* arg = listeners_.connect.get();
+            void* listenerPtr = listeners_.connect.get();
 
             obx_sync_listener_connect(
-                cPtr(), [](void* arg) { static_cast<SyncClientConnectionListener*>(arg)->connected(); }, arg);
+                cPtr(), [](void* userData) { static_cast<SyncClientConnectionListener*>(userData)->connected(); },
+                listenerPtr);
             obx_sync_listener_disconnect(
-                cPtr(), [](void* arg) { static_cast<SyncClientConnectionListener*>(arg)->disconnected(); }, arg);
+                cPtr(), [](void* userData) { static_cast<SyncClientConnectionListener*>(userData)->disconnected(); },
+                listenerPtr);
         }
     }
 
@@ -438,33 +504,51 @@ public:
 
         if (listener) {
             listeners_.combined = std::move(listener);
-            void* arg = listeners_.combined.get();
+            void* listenerPtr = listeners_.combined.get();
 
             // Note: we need to use a templated forward* method so that the override for the right class is called.
             obx_sync_listener_login(
-                cPtr(), [](void* arg) { static_cast<SyncClientListener*>(arg)->loggedIn(); }, arg);
+                cPtr(), [](void* arg) { static_cast<SyncClientListener*>(arg)->loggedIn(); }, listenerPtr);
             obx_sync_listener_login_failure(
                 cPtr(), [](void* arg, OBXSyncCode code) { static_cast<SyncClientListener*>(arg)->loginFailed(code); },
-                arg);
+                listenerPtr);
             obx_sync_listener_complete(
-                cPtr(), [](void* arg) { static_cast<SyncClientListener*>(arg)->updatesCompleted(); }, arg);
+                cPtr(), [](void* arg) { static_cast<SyncClientListener*>(arg)->updatesCompleted(); }, listenerPtr);
             obx_sync_listener_connect(
-                cPtr(), [](void* arg) { static_cast<SyncClientListener*>(arg)->connected(); }, arg);
+                cPtr(), [](void* arg) { static_cast<SyncClientListener*>(arg)->connected(); }, listenerPtr);
             obx_sync_listener_disconnect(
-                cPtr(), [](void* arg) { static_cast<SyncClientListener*>(arg)->disconnected(); }, arg);
+                cPtr(), [](void* arg) { static_cast<SyncClientListener*>(arg)->disconnected(); }, listenerPtr);
             obx_sync_listener_server_time(
                 cPtr(),
                 [](void* arg, int64_t timestampNs) {
                     static_cast<SyncClientListener*>(arg)->serverTime(
                         SyncClientTimeListener::TimePoint(std::chrono::nanoseconds(timestampNs)));
                 },
-                arg);
+                listenerPtr);
             obx_sync_listener_change(
                 cPtr(),
                 [](void* arg, const OBX_sync_change_array* cChanges) {
                     static_cast<SyncClientListener*>(arg)->changed(cChanges);
                 },
-                arg);
+                listenerPtr);
+        }
+    }
+
+    void setObjectsMessageListener(std::shared_ptr<SyncObjectsMessageListener> listener) {
+        Guard lock(listeners_.mutex);
+
+        // Keep the previous listener (if any) alive so the core may still call it before we finally switch.
+        listeners_.object.swap(listener);
+
+        if (listeners_.object) {  // switch if a new listener was given
+            obx_sync_listener_msg_objects(
+                cPtr(),
+                [](void* arg, const OBX_sync_msg_objects* cObjects) {
+                    static_cast<SyncObjectsMessageListener*>(arg)->received(cObjects);
+                },
+                listeners_.object.get());
+        } else if (listener) {  // unset the previous listener, if set
+            obx_sync_listener_msg_objects(cPtr(), nullptr, nullptr);
         }
     }
 
@@ -540,11 +624,11 @@ public:
     /// Before start(), you can still configure some aspects of the sync client, e.g. its "request update" mode.
     /// @note While you may not interact with SyncClient directly after start(), you need to hold on to the object.
     ///       Make sure the SyncClient is not destroyed and thus synchronization can keep running in the background.
-    static std::shared_ptr<SyncClient> client(Store& store, const std::string& serverUri,
+    static std::shared_ptr<SyncClient> client(Store& store, const std::string& serverUrl,
                                               const SyncCredentials& creds) {
         std::lock_guard<std::mutex> lock(store.syncClientMutex_);
         if (store.syncClient_) throw IllegalStateException("Only one sync client can be active for a store");
-        store.syncClient_.reset(new SyncClient(store, serverUri, creds));
+        store.syncClient_.reset(new SyncClient(store, serverUrl, creds));
         return std::static_pointer_cast<SyncClient>(store.syncClient_);
     }
 
@@ -592,7 +676,7 @@ public:
     /// clients.
     ///       E.g. a client with an incompatible model will be rejected during login.
     /// @param storeOptions Options for the server's store. Will be "consumed"; do not use the Options object again.
-    /// @param uri The URI (following the pattern protocol:://IP:port) the server should listen on.
+    /// @param url The URL (following the pattern protocol:://IP:port) the server should listen on.
     ///        Supported \b protocols are "ws" (WebSockets) and "wss" (secure WebSockets).
     ///        To use the latter ("wss"), you must also call obx_sync_server_certificate_path().
     ///        To bind to all available \b interfaces, including those that are available from the "outside", use
@@ -601,8 +685,8 @@ public:
     ///        an arbitrary port that is available. The port can be queried via obx_sync_server_port() once the server
     ///        was started. \b Examples: "ws://0.0.0.0:9999" could be used during development (no certificate config
     ///        needed), while in a production system, you may want to use wss and a specific IP for security reasons.
-    explicit SyncServer(Options& storeOptions, const std::string& uri)
-        : cPtr_(obx_sync_server(storeOptions.release(), uri.c_str())) {
+    explicit SyncServer(Options& storeOptions, const std::string& url)
+        : cPtr_(obx_sync_server(storeOptions.release(), url.c_str())) {
         internal::checkPtrOrThrow(cPtr_, "Could not create SyncServer");
         try {
             OBX_store* cStore = obx_sync_server_store(cPtr_);
@@ -614,9 +698,9 @@ public:
         }
     }
 
-    /// Rvalue variant of SyncServer(Options& storeOptions, const std::string& uri) that works equivalently.
-    explicit SyncServer(Options&& storeOptions, const std::string& uri)
-        : SyncServer(static_cast<Options&>(storeOptions), uri) {}
+    /// Rvalue variant of SyncServer(Options& storeOptions, const std::string& url) that works equivalently.
+    explicit SyncServer(Options&& storeOptions, const std::string& url)
+        : SyncServer(static_cast<Options&>(storeOptions), url) {}
 
     SyncServer(SyncServer&& source) noexcept : cPtr_(source.cPtr_) {
         source.cPtr_ = nullptr;
@@ -664,6 +748,23 @@ public:
     void setCredentials(const SyncCredentials& creds) {
         internal::checkErrOrThrow(obx_sync_server_credentials(
             cPtr(), creds.type_, creds.data_.empty() ? nullptr : creds.data_.data(), creds.data_.size()));
+    }
+
+    /// Sets the number of worker threads. Calll before start().
+    /// @param thread_count The default is "0" which is hardware dependent, e.g. a multiple of CPU "cores".
+    void setWorkerThreads(int threadCount) {
+        internal::checkErrOrThrow(obx_sync_server_worker_threads(cPtr(), threadCount));
+    }
+
+    /// Sets a maximum size for sync history entries to limit storage: old entries are removed to stay below this limit.
+    /// Deleting older history entries may require clients to do a full sync if they have not contacted the server for
+    /// a certain time.
+    /// @param maxSizeKb Once this maximum size is reached, old history entries are deleted (default 0: no limit).
+    /// @param targetSizeKb If this value is non-zero, the deletion of old history entries is extended until reaching
+    ///        this target (lower than the maximum) allowing deletion "batching", which may be more efficient.
+    ///        If zero, the deletion stops already stops when reaching the max size (or lower).
+    void setHistoryMaxSizeKb(uint64_t maxSizeKb, uint64_t targetSizeKb = 0) {
+        internal::checkErrOrThrow(obx_sync_server_history_max_size_in_kb(cPtr(), maxSizeKb, targetSizeKb));
     }
 
     /// Once the sync server is configured, you can "start" it to start accepting client connections.
@@ -735,11 +836,395 @@ public:
         }
     }
 
-protected:
+    /// Broadcast the given 'objects message' from the server to all currently connected (and logged-in) clients.
+    void send(SyncObjectsMessageBuilder&& message) {
+        internal::checkErrOrThrow(obx_sync_server_send_msg_objects(cPtr(), message.release()));
+    }
+
+    // TODO temporary public until Admin has c++ APIs
+    //    protected:
     OBX_sync_server* cPtr() const {
         OBX_sync_server* ptr = cPtr_;
         if (ptr == nullptr) throw IllegalStateException("Sync server was already closed");
         return ptr;
+    }
+};
+
+/// A helper class that delegates C style function pointers to C++ class method invocations via user data.
+/// Also, it provides makeFunctions() and registerProtocol().
+template <typename CLIENT>
+class CustomMsgClientDelegate {
+public:
+    static std::shared_ptr<CLIENT>* sharedPtrPtr(void* clientUserData) {
+        return static_cast<std::shared_ptr<CLIENT>*>(clientUserData);
+    }
+
+    static std::shared_ptr<CLIENT> sharedPtr(void* clientUserData) {
+        return obx::internal::toRef(sharedPtrPtr(clientUserData));
+    }
+
+    static void* delegateCreate(uint64_t clientId, const char* url, const char* certPath, void* userConfig) {
+        auto client = std::make_shared<CLIENT>(clientId, url, certPath, userConfig);
+        return new std::shared_ptr<CLIENT>(std::move(client));
+    }
+
+    static obx_err delegateStart(void* clientUserData) {
+        try {
+            sharedPtr(clientUserData)->start();
+        } catch (...) {
+            return OBX_ERROR_GENERAL;
+        }
+        return OBX_SUCCESS;
+    }
+
+    static void delegateStop(void* clientUserData) { sharedPtr(clientUserData)->stop(); }
+
+    static void delegateJoin(void* clientUserData) { sharedPtr(clientUserData)->join(); }
+
+    static void delegateShutdown(void* clientUserData) {
+        sharedPtr(clientUserData)->shutdown();
+        delete sharedPtrPtr(clientUserData);
+    }
+
+    static bool delegateConnect(void* clientUserData) { return sharedPtr(clientUserData)->connect(); }
+
+    static void delegateDisconnect(bool clearOutgoingMessages, void* clientUserData) {
+        sharedPtr(clientUserData)->disconnect(clearOutgoingMessages);
+    }
+
+    static bool delegateSendAsync(OBX_bytes_lazy* cBytes, void* clientUserData) {
+        return sharedPtr(clientUserData)->sendAsync(BytesLazy(cBytes));
+    }
+
+    static void delegateClearOutgoingMessages(void* clientUserData) {
+        sharedPtr(clientUserData)->clearOutgoingMessages();
+    }
+
+    /// Create a OBX_custom_msg_client_functions struct according to the defined template delegates.
+    static OBX_custom_msg_client_functions makeFunctions() {
+        OBX_custom_msg_client_functions functions{};
+        functions.version = sizeof(OBX_custom_msg_client_functions);
+        functions.func_create = &delegateCreate;
+        functions.func_start = &delegateStart;
+        functions.func_stop = &delegateStop;
+        functions.func_join = &delegateJoin;
+        functions.func_shutdown = &delegateShutdown;
+        functions.func_connect = &delegateConnect;
+        functions.func_disconnect = &delegateDisconnect;
+        functions.func_send_async = &delegateSendAsync;
+        functions.func_clear_outgoing_messages = &delegateClearOutgoingMessages;
+        return functions;
+    }
+
+    /// Must be called to register a protocol for your custom messaging client. Call before starting a client.
+    /// @param protocol the communication protocol to use, e.g. "tcp"
+    static void registerProtocol(const char* protocol, void* configUserData = nullptr) {
+        OBX_custom_msg_client_functions functions = makeFunctions();
+        internal::checkErrOrThrow(obx_custom_msg_client_register(protocol, &functions, configUserData));
+    }
+};
+
+/// Typically used together with CustomMsgClientDelegate e.g. to ensure a matching interface.
+/// Subclasses represent a custom client.
+/// \note At this point, the overridden methods must not throw unless specified otherwise.
+/// \note All virtual methods are pure virtual; no default implementation (e.g. {}) is provided to ensure the
+///       implementor is aware of all the interactions and thus shall explicitly provide at least empty implementations.
+class AbstractCustomMsgClient {
+    const uint64_t id_;
+
+public:
+    explicit AbstractCustomMsgClient(uint64_t id) : id_(id) {}
+
+    virtual ~AbstractCustomMsgClient() = default;
+
+    /// ID for this client instance (was passed via the constructor).
+    uint64_t id() const { return id_; }
+
+    /// Tells the client to prepare for starting (to be implemented by concrete subclass).
+    virtual void start() = 0;
+
+    /// The custom client shall do any preparations to stop (to be implemented by concrete subclass).
+    /// E.g. signal asynchronous resources (e.g. threads, async IO, ...) to stop.
+    /// Note that there's no need to wait for asynchronous resources here; better use join() for this.
+    virtual void stop() = 0;
+
+    /// Called after stop() to wait for asynchronous resources here (e.g. join any spawned threads).
+    virtual void join() = 0;
+
+    /// The custom client shall do any preparations to shut down (to be implemented by concrete subclass).
+    /// Ensure that everything is ready for the custom client to be destroyed:
+    /// the custom client will be deleted right after this call (by the CustomMsgClientDelegate).
+    virtual void shutdown() = 0;
+
+    /// Tells the client it shall start trying to connect (to be implemented by concrete subclass).
+    /// @returns true if the operation was successful.
+    /// @returns false in case the operation encountered an issue.
+    virtual bool connect() = 0;
+
+    /// Tells the client it shall disconnect (to be implemented by concrete subclass).
+    /// @param clearOutgoingMessages if true clearOutgoingMessages() will be called.
+    virtual void disconnect(bool clearOutgoingMessages) = 0;
+
+    /// Enqueue a message for sending (to be implemented by concrete subclass).
+    /// @param message the message bytes.
+    /// @return true if the process of async sending was initiated (e.g. enqueued for processing).
+    /// @return false if no attempt of sending data will be made (e.g. connection was already closed).
+    virtual bool sendAsync(BytesLazy&& message) = 0;
+
+    /// Clear all outgoing messages (to be implemented by concrete subclass).
+    virtual void clearOutgoingMessages() = 0;
+
+    /// The custom msg client must call this whenever a message is received from the server.
+    /// @param messageData the message bytes.
+    /// @param messageSize the number of message bytes.
+    /// @returns true if the given message could be forwarded.
+    /// @returns false in case the operation encountered an issue.
+    inline bool forwardReceivedMessageFromServer(const void* messageData, size_t messageSize) {
+        obx_err err = obx_custom_msg_client_receive_message_from_server(id_, messageData, messageSize);
+        return internal::checkSuccessOrThrow(err);
+    }
+
+    /// The custom msg client must call this whenever the state (according to given enum values) changes.
+    /// @param state The state to forward
+    /// @returns true if the client was in a state that allowed the transition to the given state.
+    /// @returns false if no state transition was possible from the current to the given state (e.g. an internal
+    /// "closed" state was reached).
+    inline bool forwardState(OBXCustomMsgClientState state) {
+        obx_err err = obx_custom_msg_client_set_state(id_, state);
+        return internal::checkSuccessOrThrow(err);
+    }
+
+    /// The custom msg client may call this if it has knowledge when a reconnection attempt makes sense,
+    /// for example, when the network becomes available.
+    /// @returns true if a reconnect was actually triggered and false otherwise.
+    inline bool triggerReconnect() {
+        obx_err err = obx_custom_msg_client_trigger_reconnect(id_);
+        return internal::checkSuccessOrThrow(err);
+    }
+};
+
+/// A helper class that delegates C style function pointers to C++ class method invocations via user data.
+/// Also, it provides makeFunctions() and registerProtocol().
+template <typename SERVER, typename CONNECTION>
+class CustomMsgServerDelegate {
+public:
+    static std::shared_ptr<SERVER>* sharedPtrPtr(void* serverUserData) {
+        return static_cast<std::shared_ptr<SERVER>*>(serverUserData);
+    }
+
+    static std::shared_ptr<SERVER> sharedPtr(void* serverUserData) {
+        return obx::internal::toRef(sharedPtrPtr(serverUserData));
+    }
+
+    static CONNECTION& refConnection(void* connectionUserData) {
+        return obx::internal::toRef(static_cast<CONNECTION*>(connectionUserData));
+    }
+
+    static void* delegateCreate(uint64_t serverId, const char* url, const char* certPath, void* configUserData) {
+        auto server = std::make_shared<SERVER>(serverId, url, certPath, configUserData);
+        return new std::shared_ptr<SERVER>(std::move(server));
+    }
+
+    static obx_err delegateStart(void* serverUserData, uint64_t* outPort) {
+        try {
+            uint64_t port = sharedPtr(serverUserData)->start();
+            if (outPort != nullptr) *outPort = port;
+        } catch (...) {
+            return OBX_ERROR_GENERAL;
+        }
+        return OBX_SUCCESS;
+    }
+
+    static void delegateStop(void* serverUserData) { sharedPtr(serverUserData)->stop(); }
+
+    static void delegateShutdown(void* serverUserData) {
+        sharedPtr(serverUserData)->shutdown();
+        delete sharedPtrPtr(serverUserData);
+    }
+
+    static bool delegateClientConnSendAsync(OBX_bytes_lazy* cBytes, void* /*serverUserData*/,
+                                            void* connectionUserData) {
+        return refConnection(connectionUserData).sendAsync(BytesLazy(cBytes));
+    }
+
+    static void delegateClientConnClose(void* /*serverUserData*/, void* connectionUserData) {
+        refConnection(connectionUserData).close();
+    }
+
+    static void delegateClientConnShutdown(void* connectionUserData) {
+        refConnection(connectionUserData).shutdown();
+        // Note: NOT deleting the connection here: it was created in user land, so we don't know how it was created
+        //       there and if it was created at all... Thus, this must be taken care of in user land.
+    }
+
+    /// Create a OBX_custom_msg_server_functions struct according to the defined template delegates.
+    static OBX_custom_msg_server_functions makeFunctions() {
+        OBX_custom_msg_server_functions functions{};
+        functions.version = sizeof(OBX_custom_msg_server_functions);
+        functions.func_create = &delegateCreate;
+        functions.func_start = &delegateStart;
+        functions.func_stop = &delegateStop;
+        functions.func_shutdown = &delegateShutdown;
+        functions.func_conn_send_async = &delegateClientConnSendAsync;
+        functions.func_conn_close = &delegateClientConnClose;
+        functions.func_conn_shutdown = &delegateClientConnShutdown;
+        return functions;
+    }
+
+    /// Must be called to register a protocol for your custom messaging server. Call before starting a server.
+    /// @param protocol the communication protocol to use, e.g. "tcp"
+    static void registerProtocol(const char* protocol, void* configUserData = nullptr) {
+        OBX_custom_msg_server_functions functions = makeFunctions();
+        internal::checkErrOrThrow(obx_custom_msg_server_register(protocol, &functions, configUserData));
+    }
+};
+
+/// Typically used together with CustomMsgServerDelegate e.g. to ensure a matching interface.
+/// Subclasses represent a connection of a custom server.
+class AbstractCustomMsgConnection {
+    const uint64_t serverId_;  ///< ID of the custom message server instance associated with this connection.
+    uint64_t id_;              ///< Connection ID
+
+public:
+    explicit AbstractCustomMsgConnection(uint64_t serverId, uint64_t id = 0) : serverId_(serverId), id_(id) {}
+    virtual ~AbstractCustomMsgConnection() = default;
+
+    uint64_t serverId() const { return serverId_; }
+    uint64_t id() const { return id_; }
+    void setId(uint64_t id) { id_ = id; }
+
+    /// The connection closing itself (to be implemented by concrete subclass).
+    virtual void close() = 0;
+
+    /// The connection shall shutdown; e.g. it may delete itself.
+    /// Note that there is no "automatic" deletion triggered from the custom msg system:
+    /// often, connections are intertwined with the server and thus deletion must be managed at the implementing side.
+    virtual void shutdown() = 0;
+
+    /// Offers bytes to be sent asynchronously to the client (to be implemented by concrete subclass).
+    /// @param message the message bytes.
+    /// @returns true if the operation was successful.
+    /// @returns false in case the operation encountered an issue.
+    virtual bool sendAsync(BytesLazy&& message) = 0;
+
+    /// Clear all outgoing messages (to be implemented by concrete subclass).
+    virtual void clearOutgoingMessages() = 0;
+};
+
+/// Used internally to decouple the lifetime of the user connection object from the one "managed" (created/deleted) by
+/// AbstractCustomMsgServer/CustomMsgServerDelegate. This way, the user connection can be clear at any time.
+class CustomMsgConnectionDelegate : public AbstractCustomMsgConnection {
+    std::weak_ptr<AbstractCustomMsgConnection> delegate_;
+    const bool deleteThisOnShutdown_;
+
+public:
+    explicit CustomMsgConnectionDelegate(uint64_t serverId,
+                                         const std::shared_ptr<AbstractCustomMsgConnection>& connection,
+                                         bool deleteThisOnShutdown)
+        : AbstractCustomMsgConnection(serverId, 0),
+          delegate_(connection),
+          deleteThisOnShutdown_(deleteThisOnShutdown) {}
+
+    ~CustomMsgConnectionDelegate() override = default;
+
+    inline void close() override {
+        std::shared_ptr<obx::AbstractCustomMsgConnection> delegate = delegate_.lock();
+        if (delegate) delegate->close();
+    };
+
+    inline void shutdown() override {
+        std::shared_ptr<obx::AbstractCustomMsgConnection> delegate = delegate_.lock();
+        if (delegate) delegate->shutdown();
+        if (deleteThisOnShutdown_) delete this;
+    };
+
+    inline bool sendAsync(BytesLazy&& message) override {
+        std::shared_ptr<obx::AbstractCustomMsgConnection> delegate = delegate_.lock();
+        return delegate && delegate->sendAsync(std::move(message));
+    };
+
+    inline void clearOutgoingMessages() override {
+        std::shared_ptr<obx::AbstractCustomMsgConnection> delegate = delegate_.lock();
+        if (delegate) delegate->clearOutgoingMessages();
+    };
+};
+
+/// Typically used together with CustomMsgServerDelegate e.g. to ensure a matching interface.
+/// Subclasses represent a custom server.
+/// \note At this point, the overridden methods must not throw unless specified otherwise.
+/// \note All virtual methods are pure virtual; no default implementation (e.g. {}) is provided to ensure the
+///       implementor is aware of all the interactions and thus shall explicitly provide at least empty implementations.
+class AbstractCustomMsgServer {
+    const uint64_t id_;
+
+public:
+    explicit AbstractCustomMsgServer(const uint64_t id) : id_(id) {}
+    virtual ~AbstractCustomMsgServer() = default;
+
+    /// ID for this server instance (was passed via the constructor).
+    uint64_t id() const { return id_; }
+
+    /// The custom server shall do any preparations to start (to be implemented by concrete subclass).
+    /// The implementation may throw an exception to signal that starting was not successful;
+    /// note that exception specifics are ignored, e.g. the type and any exception message.
+    /// @returns The custom server can optionally supply a "port";
+    ///          the value is arbitrary and, for now, is only used for debug logs.
+    virtual uint64_t start() = 0;
+
+    /// The custom server shall do any preparations to stop (to be implemented by concrete subclass).
+    /// E.g. signal asynchronous resources (e.g. threads, async IO, ...) to stop.
+    /// Note that there's no need to wait for asynchronous resources here; better use shutdown() for this.
+    virtual void stop() = 0;
+
+    /// The custom server shall do any preparations to shut down (to be implemented by concrete subclass).
+    /// Ensure that everything is ready for the custom server to be destroyed:
+    /// the custom server will be deleted right after this call (by the CustomMsgServerDelegate).
+    virtual void shutdown() = 0;
+
+    /// Must be called from the custom server when a new client connection becomes available.
+    /// If successful, the ID is also set at the given connection.
+    /// @param connection will be held internally as a weak ptr, so it should affect its lifetime only mildly.
+    ///        Only when a callback is delegated, it will have hold a strong (shared_ptr) reference for that time.
+    /// @returns client connection ID (never 0; also set at the given connection)
+    /// @throws Exception in case the operation encountered an exceptional issue
+    inline uint64_t addConnection(const std::shared_ptr<AbstractCustomMsgConnection>& connection) {
+        if (!connection) throw IllegalArgumentException("No connection was provided");
+        auto delegate =
+            std::unique_ptr<CustomMsgConnectionDelegate>(new CustomMsgConnectionDelegate(id(), connection, true));
+        uint64_t connectionId = obx_custom_msg_server_add_client_connection(id(), delegate.get());
+        internal::checkIdOrThrow(connectionId, "Could not add custom server connection");
+        delegate->setId(connectionId);
+        delegate.release();  // Safe to release now  // NOLINT(bugprone-unused-return-value)
+        connection->setId(connectionId);
+        return connectionId;
+    }
+
+    /// Must be called from the custom server when a client connection becomes inactive (e.g. closed) and can be
+    /// removed.
+    /// @param connectionId ID of the connection the messages originated from.
+    /// @returns true if the given message could be forwarded.
+    /// @returns false in case the operation encountered an issue.
+    /// @throws Exception in case the operation encountered an exceptional issue
+    inline bool removeConnection(uint64_t connectionId) {
+        obx_err err = obx_custom_msg_server_remove_client_connection(id(), connectionId);
+        return internal::checkSuccessOrThrow(err);
+    }
+
+    /// Short hand for removeConnection(connection.id()).
+    inline bool removeConnection(const AbstractCustomMsgConnection& connection) {
+        return removeConnection(connection.id());
+    }
+
+    /// The custom msg server must call this whenever a message is received from a client connection.
+    /// @param connectionId ID of the connection the messages originated from.
+    /// @param messageData the message bytes.
+    /// @param messageSize the number of message bytes.
+    /// @returns true if the given message could be forwarded.
+    /// @returns false in case the operation encountered an issue.
+    /// @throws Exception in case the operation encountered an exceptional issue
+    inline bool forwardReceivedMessageFromClient(uint64_t connectionId, const void* messageData, size_t messageSize) {
+        obx_err err = obx_custom_msg_server_receive_message_from_client(id(), connectionId, messageData, messageSize);
+        return internal::checkSuccessOrThrow(err);
     }
 };
 

@@ -1,6 +1,35 @@
 ObjectBox C and C++ API Changelog
 =================================
 
+0.18.0 (2022-10-31)
+-------------------
+* Date properties can now be tagged as expiration time; which can be then be easily evicted
+* Tree API: various additions and improvements, e.g. OBXTreeOptionFlags to configure the tree behavior 
+* New query condition to match objects that have a given number of relations
+* New "max data size" store setting
+* Enabled stricter compiler settings 
+* Added stacktraces on errors (Linux only; very lightweight as it uses external addr2line or llvm-symbolizer)
+* Added log callback for most important logs
+* Consolidated "user data" passing as the last parameter
+* Various internal improvements
+
+### C++
+
+* Added BoxTypeless, QueryBuilderBase and QueryBase:
+  these can be used without generated code and template types.
+* New APIs to get the schema IDs for entity types and properties
+* Added two methods to Store to await asynchronous processing
+* Added "internal" namespace so that internal members do not spill into the obx namespace 
+* Move more implementations to OBX_CPP_FILE
+
+### Sync
+
+* Custom protocols for Sync: plugin your own messaging protocol, which ObjectBox Sync will run on 
+* Improvements to run Sync Server with limited disk space (e.g. on small devices)
+* Tree Sync improvements; e.g. consolidate conflicts
+* WebSockets (sync protocol) is now a feature, which can be turned off (special build version)
+* Performance optimizations
+
 0.17.0 (2022-06-15)
 -------------------
 * Added a "weak store" API providing weak reference for stores (typically used by background threads)

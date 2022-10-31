@@ -36,7 +36,7 @@
 #include <optional>
 #endif
 
-static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 17 && OBX_VERSION_PATCH == 0,  // NOLINT
+static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 18 && OBX_VERSION_PATCH == 0,  // NOLINT
               "Versions of objectbox.h and objectbox.hpp files do not match, please update");
 
 #ifdef __clang__
@@ -83,6 +83,26 @@ public:
     int code() const override { return OBX_ERROR_ILLEGAL_STATE; }
 };
 
+/// Thrown when a transaction is about to commit but it would exceed the user-defined data size limit.
+/// See obx_opt_max_data_size_in_kb() for details.
+class MaxDataSizeExceededException : public Exception {
+public:
+    using Exception::Exception;
+
+    /// Always OBX_ERROR_MAX_DATA_SIZE_EXCEEDED
+    int code() const override { return OBX_ERROR_MAX_DATA_SIZE_EXCEEDED; }
+};
+
+/// The operation on a resource (typically a Store) failed because the resources is in process of being shut down or
+/// already has shutdown. For example, calling methods on the Store will throw this exception after Store::close().
+class ShuttingDownException : public IllegalStateException {
+public:
+    using IllegalStateException::IllegalStateException;
+
+    /// Always OBX_ERROR_SHUTTING_DOWN
+    int code() const override { return OBX_ERROR_SHUTTING_DOWN; }
+};
+
 #define OBX_VERIFY_ARGUMENT(c) \
     ((c) ? (void) (0) : obx::internal::throwIllegalArgumentException("Argument validation failed: ", #c))
 
@@ -110,17 +130,32 @@ namespace internal {
 /// @throws Exception using the given error (defaults to obx_last_error_code())
 [[noreturn]] void throwLastError(obx_err err = obx_last_error_code(), const char* contextPrefix = nullptr);
 
+void appendLastErrorText(obx_err err, std::string& outMessage);
+
+/// @throws Exception or subclass depending on the given err, with the given message
+[[noreturn]] void throwError(obx_err err, const std::string& message);
+
 void checkErrOrThrow(obx_err err);
 
 bool checkSuccessOrThrow(obx_err err);
 
 void checkPtrOrThrow(const void* ptr, const char* contextPrefix = nullptr);
 
+void checkIdOrThrow(uint64_t id, const char* contextPrefix = nullptr);
+
 /// "Pass-through" variant of checkPtrOrThrow() - prefer the latter if this is not required (less templating).
 template <typename T>
 T* checkedPtrOrThrow(T* ptr, const char* contextPrefix = nullptr) {
     internal::checkPtrOrThrow(ptr, contextPrefix);
     return ptr;
+}
+
+/// Dereferences the given pointer, which must be non-null.
+/// @throws IllegalStateException if ptr is nullptr
+template <typename EX = IllegalStateException, typename T>
+T& toRef(T* ptr, const char* message = "Can not dereference a null pointer") {
+    if (ptr == nullptr) throw EX(message);
+    return *ptr;
 }
 
 #ifdef OBX_CPP_FILE
@@ -144,23 +179,39 @@ T* checkedPtrOrThrow(T* ptr, const char* contextPrefix = nullptr) {
         msg += "No error occurred (operation was successful)";
         throw IllegalStateException(msg);
     } else {
-        obx_err lastErr = obx_last_error_code();
-        if (err == lastErr) {
-            assert(lastErr != 0);  // checked indirectly against err before
-            msg = obx_last_error_message();
-        } else {  // Do not use obx_last_error_message() as primary msg because it originated from another code
-            msg.append("Error code ").append(std::to_string(err));
-            if (lastErr != 0) {
-                msg.append(" (last: ").append(std::to_string(lastErr));
-                msg.append(", last msg: ").append(obx_last_error_message()).append(")");
-            }
+        appendLastErrorText(err, msg);
+        throwError(err, msg);
+    }
+}
+
+void appendLastErrorText(obx_err err, std::string& outMessage) {
+    obx_err lastErr = obx_last_error_code();
+    if (err == lastErr) {
+        assert(lastErr != 0);  // checked indirectly against err before
+        outMessage += obx_last_error_message();
+    } else {  // Do not use obx_last_error_message() as primary msg because it originated from another code
+        outMessage.append("Error code ").append(std::to_string(err));
+        if (lastErr != 0) {
+            outMessage.append(" (last: ").append(std::to_string(lastErr));
+            outMessage.append(", last msg: ").append(obx_last_error_message()).append(")");
         }
+    }
+}
+
+[[noreturn]] void throwError(obx_err err, const std::string& message) {
+    if (err == OBX_SUCCESS) {  // Zero, there's no error actually: this is atypical corner case, which should be avoided
+        throw IllegalStateException("No error occurred; operation was successful. Given message: " + message);
+    } else {
         if (err == OBX_ERROR_ILLEGAL_ARGUMENT) {
-            throw IllegalArgumentException(msg);
+            throw IllegalArgumentException(message);
         } else if (err == OBX_ERROR_ILLEGAL_STATE) {
-            throw IllegalStateException(msg);
+            throw IllegalStateException(message);
+        } else if (err == OBX_ERROR_SHUTTING_DOWN) {
+            throw ShuttingDownException(message);
+        } else if (err == OBX_ERROR_MAX_DATA_SIZE_EXCEEDED) {
+            throw MaxDataSizeExceededException(message);
         } else {
-            throw DbException(msg, err);
+            throw DbException(message, err);
         }
     }
 }
@@ -179,8 +230,59 @@ void checkPtrOrThrow(const void* ptr, const char* contextPrefix) {
     if (ptr == nullptr) throwLastError(obx_last_error_code(), contextPrefix);
 }
 
+void checkIdOrThrow(uint64_t id, const char* contextPrefix) {
+    if (id == 0) throwLastError(obx_last_error_code(), contextPrefix);
+}
+
 #endif
 }  // namespace internal
+
+/// Bytes, which must be resolved "lazily" via get() and released via this object (destructor).
+/// Unlike void* style bytes, this may represent allocated resources and/or bytes that are only produced on demand.
+class BytesLazy {
+    OBX_bytes_lazy* cPtr_;
+
+public:
+    BytesLazy() : cPtr_(nullptr) {}
+
+    explicit BytesLazy(OBX_bytes_lazy* cBytes) : cPtr_(cBytes) {}
+
+    BytesLazy(BytesLazy&& src) noexcept : cPtr_(src.cPtr_) { src.cPtr_ = nullptr; }
+
+    /// No copying allowed: OBX_bytes_lazy needs a single owner (no method to "clone" it).
+    BytesLazy(const BytesLazy& src) = delete;
+
+    ~BytesLazy() { clear(); }
+
+    /// @returns true if it holds actual bytes resources (e.g. not default-constructed and not clear()ed yet).
+    bool hasBytes() { return cPtr_ != nullptr; }
+
+    /// @returns true if it does not hold any bytes resources (e.g. default-constructed or already clear()ed).
+    bool isNull() { return cPtr_ == nullptr; }
+
+    void swap(BytesLazy& other) { std::swap(cPtr_, other.cPtr_); }
+
+    /// Clears any bytes resources
+    void clear() {
+        obx_bytes_lazy_free(cPtr_);
+        cPtr_ = nullptr;
+    }
+
+    /// Gets the bytes and its size using the given "out" references.
+    void get(const void*& outBytes, size_t& outSize) const {
+        if (cPtr_ == nullptr) throw IllegalStateException("This instance does not hold any bytes resources");
+        internal::checkErrOrThrow(obx_bytes_lazy_get(cPtr_, &outBytes, &outSize));
+    }
+
+    /// Note that this will potentially resolve actual bytes just like get().
+    /// Also, it would be more efficient to only call get() to get everything in a single call.
+    size_t size() {
+        if (cPtr_ == nullptr) throw IllegalStateException("This instance does not hold any bytes resources");
+        size_t size = 0;
+        internal::checkErrOrThrow(obx_bytes_lazy_get(cPtr_, nullptr, &size));
+        return size;
+    }
+};
 
 namespace {
 template <typename EntityT>
@@ -191,6 +293,8 @@ constexpr obx_schema_id entityId() {
 
 template <class T>
 class Box;
+
+class BoxTypeless;
 
 template <class T>
 class AsyncBox;
@@ -207,6 +311,8 @@ public:
     virtual bool isClosed() = 0;
     virtual void close() = 0;
 };
+
+using ObxLogCallback = std::function<void(OBXLogLevel logLevel, const char* text, size_t textSize)>;
 
 /// Options provide a way to configure Store when opening it.
 /// Options functions can be chained, e.g. options.directory("mypath/objectbox").maxDbSizeInKb(2048);
@@ -251,11 +357,34 @@ public:
     /// Set the store directory on the options. The default is "objectbox".
     Options& directory(const std::string& dir) { return directory(dir.c_str()); }
 
+    /// Gets the option for "directory"; this is either the default, or, the value set by directory().
+    std::string getDirectory() const {
+        const char* dir = obx_opt_get_directory(opt);
+        internal::checkPtrOrThrow(dir, "Could not get directory");
+        return dir;
+    }
+
     /// Set the maximum db size on the options. The default is 1Gb.
-    Options& maxDbSizeInKb(size_t sizeInKb) {
+    Options& maxDbSizeInKb(uint64_t sizeInKb) {
         obx_opt_max_db_size_in_kb(opt, sizeInKb);
         return *this;
     }
+
+    /// Gets the option for "max DB size"; this is either the default, or, the value set by maxDbSizeInKb().
+    uint64_t getMaxDbSizeInKb() const { return obx_opt_get_max_db_size_in_kb(opt); }
+
+    /// Data size tracking is more involved than DB size tracking, e.g. it stores an internal counter.
+    /// Thus only use it if a stricter, more accurate limit is required (it's off by default).
+    /// It tracks the size of actual data bytes of objects (system and metadata is not considered).
+    /// On the upside, reaching the data limit still allows data to be removed (assuming DB limit is not reached).
+    /// Max data and DB sizes can be combined; data size must be below the DB size.
+    Options& maxDataSizeInKb(uint64_t sizeInKb) {
+        obx_opt_max_data_size_in_kb(opt, sizeInKb);
+        return *this;
+    }
+
+    /// Gets the option for "max DB size"; this is either the default, or, the value set by maxDataSizeInKb().
+    uint64_t getMaxDataSizeInKb() const { return obx_opt_get_max_data_size_in_kb(opt); }
 
     /// Set the file mode on the options. The default is 0644 (unix-style)
     Options& fileMode(unsigned int fileMode) {
@@ -348,11 +477,20 @@ public:
         return *this;
     }
 
-    /// Configure debug logging. Defaults to NONE
+    /// Configure debug flags; e.g. to influence logging. Defaults to NONE.
     Options& debugFlags(OBXDebugFlags flags) {
         obx_opt_debug_flags(opt, flags);
         return *this;
     }
+
+    /// Adds debug flags to potentially existing ones (that were previously set).
+    Options& addDebugFlags(OBXDebugFlags flags) {
+        obx_opt_add_debug_flags(opt, flags);
+        return *this;
+    }
+
+    /// Gets the option for "debug flags"; this is either the default, or, the value set by debugFlags().
+    uint64_t getDebugFlags() const { return obx_opt_get_debug_flags(opt); }
 
     /// Maximum of async elements in the queue before new elements will be rejected.
     /// Hitting this limit usually hints that async processing cannot keep up;
@@ -458,6 +596,13 @@ public:
         obx_opt_async_object_bytes_max_size_to_cache(opt, value);
         return *this;
     }
+
+    /// Registers a log callback, which is called for a selection of log events.
+    /// Note: this does not replace the default logging, which is much more extensive (at least at this point).
+    Options& logCallback(obx_log_callback* callback, void* userData) {
+        obx_opt_log_callback(opt, callback, userData);
+        return *this;
+    }
 };
 
 /// Transactions can be started in read (only) or write mode.
@@ -468,10 +613,10 @@ enum class TxMode { READ, WRITE };
 /// Once opened using one of the constructors, Store is an entry point to data access APIs such as Box, Query, and
 /// Transaction.
 ///
-/// It's possible open multiple stores in different directories.
+/// It's possible open multiple stores in different directories, e.g. at the same time.
 class Store {
-    OBX_store* cStore_;
-    bool owned_ = true;  ///< whether the store pointer is owned (true except for SyncServer::store())
+    std::atomic<OBX_store*> cStore_;
+    const bool owned_;  ///< whether the store pointer is owned (true except for SyncServer::store())
     std::shared_ptr<Closable> syncClient_;
     std::mutex syncClientMutex_;
 
@@ -503,11 +648,35 @@ public:
     /// Return the version of the library as ints. Pointers may be null
     static void getVersion(int* major, int* minor, int* patch) { obx_version(major, minor, patch); }
 
+    /// Enable (or disable) debug logging for ObjectBox internals.
+    /// This requires a version of the library with the DebugLog feature.
+    /// You can check if the feature is available with obx_has_feature(OBXFeature_DebugLog).
+    static void debugLog(bool enabled) { internal::checkErrOrThrow(obx_debug_log(enabled)); }
+
+    /// Checks if debug logs are enabled for ObjectBox internals.
+    /// This depends on the availability of the DebugLog feature.
+    /// If the feature is available, it returns the current state, which is adjustable via obx_debug_log().
+    /// Otherwise, it always returns false for standard release builds
+    /// (or true if you are having a special debug version).
+    static bool debugLogEnabled() { return obx_debug_log_enabled(); }
+
+    /// Delete the store files from the given directory
+    static void removeDbFiles(const std::string& directory) {
+        internal::checkErrOrThrow(obx_remove_db_files(directory.c_str()));
+    }
+
+    static size_t getDbFileSize(const std::string& directory) { return obx_db_file_size(directory.c_str()); }
+
+    // -- Instance methods ---------------------------------------------------
+
+    /// Creates a Store with the given model and default Options.
     explicit Store(OBX_model* model) : Store(Options().model(model)) {}
 
+    /// Creates a Store with the given Options, which also contain the data model.
     explicit Store(Options& options)
         : Store(internal::checkedPtrOrThrow(obx_store_open(options.release()), "Can not open store"), true) {}
 
+    /// Creates a Store with the given Options, which also contain the data model.
     explicit Store(Options&& options) : Store(options) {}
 
     /// Wraps an existing C-API store pointer, taking ownership (don't close it manually anymore)
@@ -516,18 +685,15 @@ public:
     /// Can't be copied, single owner of C resources is required (to avoid double-free during destruction)
     Store(const Store&) = delete;
 
-    Store(Store&& source) noexcept : cStore_(source.cStore_) { source.cStore_ = nullptr; }
+    Store(Store&& source) noexcept;
 
     virtual ~Store();
 
-    OBX_store* cPtr() const { return cStore_; }
+    /// @throws ShuttingDownException if the Store is closed (close() was call on the store).
+    OBX_store* cPtr() const;
 
     /// @returns non-zero ID for the Store
-    uint64_t id() const {
-        uint64_t id = obx_store_id(cStore_);
-        if (id == 0) internal::throwLastError();
-        return id;
-    }
+    uint64_t id() const;
 
     template <class EntityBinding>
     Box<EntityBinding> box() {
@@ -543,21 +709,76 @@ public:
     /// Starts a (read &) write transaction.
     Transaction txWrite();
 
+    /// Does not throw if the given type name is not found (it may still throw in other conditions).
+    obx_schema_id getEntityTypeIdNoThrow(const char* entityName) const {
+        return obx_store_entity_id(cPtr(), entityName);
+    }
+
+    obx_schema_id getEntityTypeId(const char* entityName) const {
+        obx_schema_id typeId = getEntityTypeIdNoThrow(entityName);
+        if (typeId == 0) internal::throwIllegalStateException("No entity type found for name: ", entityName);
+        return typeId;
+    }
+
+    /// Does not throw if the given property name is not found (it may still throw in other conditions).
+    obx_schema_id getPropertyIdNoThrow(obx_schema_id entityId, const char* propertyName) const {
+        return obx_store_entity_property_id(cPtr(), entityId, propertyName);
+    }
+
+    obx_schema_id getPropertyId(obx_schema_id entityId, const char* propertyName) const {
+        obx_schema_id propertyId = getPropertyIdNoThrow(entityId, propertyName);
+        if (propertyId == 0) internal::throwIllegalStateException("No property found for name: ", propertyName);
+        return propertyId;
+    }
+
+    obx_schema_id getPropertyId(const char* entityName, const char* propertyName) const {
+        return getPropertyId(getEntityTypeId(entityName), propertyName);
+    }
+
+    BoxTypeless boxTypeless(const char* entityName);
+
+    /// Await all (including future) async submissions to be completed (the async queue becomes empty).
+    /// @returns true if all submissions were completed (or async processing was not started)
+    /// @returns false if shutting down or an error occurred
+    bool awaitCompletion() { return obx_store_await_async_completion(cPtr()); }
+
+    /// Await previously submitted async operations to be completed (the async queue may still contain elements).
+    /// @returns true if all submissions were completed (or async processing was not started)
+    /// @returns false if shutting down or an error occurred
+    bool awaitSubmitted() { return obx_store_await_async_submitted(cPtr()); }
+
     /// @return an existing SyncClient associated with the store (if available; see Sync::client() to create one)
     /// @note: implemented in objectbox-sync.hpp
     std::shared_ptr<SyncClient> syncClient();
 
-    /// Enable (or disable) debug logging. This requires a version of the library with OBXFeature_DebugLog.
-    static void debugLog(bool enabled) { internal::checkErrOrThrow(obx_debug_log(enabled)); }
+    /// Prepares the store to close by setting its internal state to "closing".
+    /// Methods like tx() an boxFor() will throw ShuttingDownException once closing is initiated.
+    /// Unlike close(), this method will return immediately and does not free resources just yet.
+    /// This is typically used in a multi-threaded context to allow an orderly shutdown in stages which go through a
+    /// "not accepting new requests" state.
+    void prepareToClose();
 
-    static void removeDbFiles(const std::string& directory) {
-        internal::checkErrOrThrow(obx_remove_db_files(directory.c_str()));
-    }
+    /// Closes all resources of this store before the destructor is called, e.g. to avoid waiting in the destructor.
+    /// Avoid calling methods on the Store after this call; most methods will throw ShuttingDownException in that case.
+    /// Calling close() more than once have no effect, and concurrent calls to close() are fine too.
+    /// \note This waits for write transactions to finish before returning from this call.
+    /// \note The Store destructor also calls close(), so you do not have to call this method explicitly unless you want
+    /// to control the timing of closing resources and potentially waiting for asynchronous resources (e.g. transactions
+    /// and internal queues) to finish up.
+    void close();
 };
 
 #ifdef OBX_CPP_FILE
 
-Store::~Store() {
+Store::Store(Store&& source) noexcept : cStore_(source.cStore_.load()), owned_(source.owned_) {
+    source.cStore_ = nullptr;
+    std::lock_guard<std::mutex> lock(source.syncClientMutex_);
+    syncClient_ = std::move(source.syncClient_);
+}
+
+Store::~Store() { close(); }
+
+void Store::close() {
     {
         // Clean up SyncClient by explicitly closing it, even if it isn't the only shared_ptr to the instance.
         // This prevents invalid use of store after it's been closed.
@@ -579,7 +800,27 @@ Store::~Store() {
         }
     }
 
-    if (owned_) obx_store_close(cStore_);
+    if (owned_) {
+        OBX_store* storeToClose = cStore_.exchange(nullptr);  // Close exactly once
+        obx_store_close(storeToClose);
+    }
+}
+
+OBX_store* Store::cPtr() const {
+    OBX_store* store = cStore_.load();
+    if (store == nullptr) throw ShuttingDownException("Store is already closed");
+    return store;
+}
+
+uint64_t Store::id() const {
+    uint64_t id = obx_store_id(cPtr());
+    internal::checkIdOrThrow(id);
+    return id;
+}
+
+void Store::prepareToClose() {
+    obx_err err = obx_store_prepare_to_close(cPtr());
+    internal::checkErrOrThrow(err);
 }
 
 #endif
@@ -601,13 +842,7 @@ class Transaction {
     OBX_txn* cTxn_;
 
 public:
-    explicit Transaction(Store& store, TxMode mode)
-        : mode_(mode), cTxn_(mode == TxMode::WRITE ? obx_txn_write(store.cPtr()) : obx_txn_read(store.cPtr())) {
-        internal::checkPtrOrThrow(cTxn_, "Can not start transaction");
-    }
-
-    /// Never throws
-    virtual ~Transaction() { closeNoThrow(); };
+    Transaction(Store& store, TxMode mode);
 
     /// Delete because the default copy constructor can break things (i.e. a Transaction can not be copied).
     Transaction(const Transaction&) = delete;
@@ -615,43 +850,90 @@ public:
     /// Move constructor, used by Store::tx()
     Transaction(Transaction&& source) noexcept : mode_(source.mode_), cTxn_(source.cTxn_) { source.cTxn_ = nullptr; }
 
+    /// Copy-and-swap style
+    Transaction& operator=(Transaction source);
+
+    /// Never throws
+    virtual ~Transaction() { closeNoThrow(); };
+
     /// A Transaction is active if it was not ended via success(), close() or moving.
     bool isActive() { return cTxn_ != nullptr; }
 
     /// The transaction pointer of the ObjectBox C API.
     /// @throws if this Transaction was already closed or moved
-    OBX_txn* cPtr() const {
-        OBX_VERIFY_STATE(cTxn_);
-        return cTxn_;
-    }
+    OBX_txn* cPtr() const;
 
     /// "Finishes" this write transaction successfully; performs a commit if this is the top level transaction and all
     /// inner transactions (if any) were also successful. This object will also be "closed".
     /// @throws Exception if this is not a write TX or it was closed before (e.g. via success()).
-    void success() {
-        OBX_txn* txn = cTxn_;
-        OBX_VERIFY_STATE(txn);
-        cTxn_ = nullptr;
-        internal::checkErrOrThrow(obx_txn_success(txn));
-    }
+    void success();
 
     /// Explicit close to free up resources (non-throwing version).
     /// It's OK to call this method multiple times; additional calls will have no effect.
-    obx_err closeNoThrow() {
-        OBX_txn* txnToClose = cTxn_;
-        cTxn_ = nullptr;
-        return obx_txn_close(txnToClose);
-    }
+    obx_err closeNoThrow();
 
     /// Explicit close to free up resources; unlike closeNoThrow() (which is also called by the destructor), this
     /// version throw in the unlikely case of failing.
     /// It's OK to call this method multiple times; additional calls will have no effect.
-    void close() { internal::checkErrOrThrow(closeNoThrow()); }
+    void close();
+
+    /// The data size of the committed state (not updated for this transaction).
+    uint64_t getDataSizeCommitted() const;
+
+    /// Cumulative change (delta) of data size by this pending transaction (uncommitted).
+    int64_t getDataSizeChange() const;
 };
 
-inline Transaction Store::tx(TxMode mode) { return Transaction(*this, mode); }
-inline Transaction Store::txRead() { return tx(TxMode::READ); }
-inline Transaction Store::txWrite() { return tx(TxMode::WRITE); }
+#ifdef OBX_CPP_FILE
+
+Transaction::Transaction(Store& store, TxMode mode)
+    : mode_(mode), cTxn_(mode == TxMode::WRITE ? obx_txn_write(store.cPtr()) : obx_txn_read(store.cPtr())) {
+    internal::checkPtrOrThrow(cTxn_, "Can not start transaction");
+}
+
+Transaction& Transaction::operator=(Transaction source) {
+    std::swap(mode_, source.mode_);
+    std::swap(cTxn_, source.cTxn_);
+    return *this;
+}
+
+OBX_txn* Transaction::cPtr() const {
+    OBX_VERIFY_STATE(cTxn_);
+    return cTxn_;
+}
+
+void Transaction::success() {
+    OBX_txn* txn = cTxn_;
+    OBX_VERIFY_STATE(txn);
+    cTxn_ = nullptr;
+    internal::checkErrOrThrow(obx_txn_success(txn));
+}
+
+obx_err Transaction::closeNoThrow() {
+    OBX_txn* txnToClose = cTxn_;
+    cTxn_ = nullptr;
+    return obx_txn_close(txnToClose);
+}
+
+void Transaction::close() { internal::checkErrOrThrow(closeNoThrow()); }
+
+uint64_t Transaction::getDataSizeCommitted() const {
+    uint64_t size = 0;
+    internal::checkErrOrThrow(obx_txn_data_size(cPtr(), &size, nullptr));
+    return size;
+}
+
+int64_t Transaction::getDataSizeChange() const {
+    uint64_t size = 0;
+    internal::checkErrOrThrow(obx_txn_data_size(cPtr(), nullptr, &size));
+    return size;
+}
+
+Transaction Store::tx(TxMode mode) { return Transaction(*this, mode); }
+Transaction Store::txRead() { return tx(TxMode::READ); }
+Transaction Store::txWrite() { return tx(TxMode::WRITE); }
+
+#endif
 
 namespace {  // internal
 /// Internal cursor wrapper for convenience and RAII.
@@ -689,7 +971,7 @@ template <typename EntityT>
 struct CollectingVisitor {
     std::vector<std::unique_ptr<EntityT>> items;
 
-    static bool visit(void* userData, const void* data, size_t size) {
+    static bool visit(const void* data, size_t size, void* userData) {
         auto self = static_cast<CollectingVisitor<EntityT>*>(userData);
         self->items.emplace_back(new EntityT());
         EntityT::_OBX_MetaInfo::fromFlatBuffer(data, size, *(self->items.back()));
@@ -1436,43 +1718,139 @@ protected:
     const obx_schema_id id_;
 };
 
+class QueryBase;
+
 template <typename EntityT>
 class Query;
 
-/// Provides a simple wrapper for OBX_query_builder to simplify memory management - calls obx_qb_close() on destruction.
-/// To specify actual conditions, use obx_qb_*() methods with queryBuilder.cPtr() as the first argument.
-template <typename EntityT>
-class QueryBuilder {
-    using EntityBinding = typename EntityT::_OBX_MetaInfo;
+/// A QueryBuilderBase is used to create database queries using an API (no string based query language).
+/// Building the queries involves calling functions to add conditions for the query.
+/// In the end a Query object is build, which then can be used to actually run the query (potentially multiple times).
+/// For generated code, you can also use the templated subclass QueryBuilder instead to have type safety at compile
+/// time.
+class QueryBuilderBase {
+protected:
     Store& store_;
     OBX_query_builder* cQueryBuilder_;
-    bool isRoot_;
+    const obx_schema_id entityId_;
+    const bool isRoot_;
 
 public:
-    explicit QueryBuilder(Store& store)
-        : QueryBuilder(store, obx_query_builder(store.cPtr(), EntityBinding::entityId()), true) {}
+    QueryBuilderBase(Store& store, obx_schema_id entityId)
+        : QueryBuilderBase(store, obx_query_builder(store.cPtr(), entityId), true) {}
+
+    QueryBuilderBase(Store& store, const char* entityName)
+        : QueryBuilderBase(store, store.getEntityTypeId(entityName)) {}
 
     /// Take ownership of an OBX_query_builder.
     ///
     /// *Example:**
     ///
     ///          QueryBuilder innerQb(obx_qb_link_property(outerQb.cPtr(), linkPropertyId), false)
-    explicit QueryBuilder(Store& store, OBX_query_builder* ptr, bool isRoot)
-        : store_(store), cQueryBuilder_(ptr), isRoot_(isRoot) {
+    explicit QueryBuilderBase(Store& store, OBX_query_builder* ptr, bool isRoot)
+        : store_(store), cQueryBuilder_(ptr), entityId_(obx_qb_type_id(cQueryBuilder_)), isRoot_(isRoot) {
         internal::checkPtrOrThrow(cQueryBuilder_, "Can not create query builder");
+        internal::checkIdOrThrow(entityId_, "Can not create query builder");
     }
 
-    /// Can't be copied, single owner of C resources is required (to avoid double-free during destruction)
-    QueryBuilder(const QueryBuilder&) = delete;
+    /// Can't be copied, single owner of C resources is required (e.g. avoid double-free during destruction)
+    QueryBuilderBase(const QueryBuilderBase&) = delete;
 
-    QueryBuilder(QueryBuilder&& source) noexcept
-        : store_(source.store_), cQueryBuilder_(source.cQueryBuilder_), isRoot_(source.isRoot_) {
+    QueryBuilderBase(QueryBuilderBase&& source) noexcept
+        : store_(source.store_),
+          cQueryBuilder_(source.cQueryBuilder_),
+          entityId_(source.entityId_),
+          isRoot_(source.isRoot_) {
         source.cQueryBuilder_ = nullptr;
     }
 
-    virtual ~QueryBuilder() { obx_qb_close(cQueryBuilder_); }
+    virtual ~QueryBuilderBase() { obx_qb_close(cQueryBuilder_); }
 
     OBX_query_builder* cPtr() const { return cQueryBuilder_; }
+
+    /// An object matches, if it has a given number of related objects pointing to it.
+    /// At this point, there are a couple of limitations (later version may improve on that):
+    /// 1) 1:N relations only, 2) the complexity is O(n * (relationCount + 1)) and cannot be improved via indexes,
+    /// 3) The relation count cannot be set as an parameter.
+    /// @param relationEntityId ID of the entity type the relation comes from.
+    /// @param relationPropertyId ID of the property in the related entity type representing the relation.
+    /// @param relationCount Number of related object an object must have to match. May be 0 if objects shall be matched
+    ///        that do not have related objects. (Typically low numbers are used for the count.)
+    QueryBuilderBase& relationCount(obx_schema_id relationEntityId, obx_schema_id relationPropertyId,
+                                    uint32_t relationCount) {
+        obx_qb_cond condition =
+            obx_qb_relation_count_property(cQueryBuilder_, relationEntityId, relationPropertyId, relationCount);
+        if (condition == 0) internal::throwLastError();
+        return *this;
+    }
+
+    QueryBuilderBase& equals(obx_schema_id propertyId, int64_t value) {
+        obx_qb_cond condition = obx_qb_equals_int(cQueryBuilder_, propertyId, value);
+        if (condition == 0) internal::throwLastError();
+        return *this;
+    }
+
+    QueryBuilderBase& notEquals(obx_schema_id propertyId, int64_t value) {
+        obx_qb_cond condition = obx_qb_not_equals_int(cQueryBuilder_, propertyId, value);
+        if (condition == 0) internal::throwLastError();
+        return *this;
+    }
+
+    QueryBuilderBase& greaterThan(obx_schema_id propertyId, int64_t value) {
+        obx_qb_cond condition = obx_qb_greater_than_int(cQueryBuilder_, propertyId, value);
+        if (condition == 0) internal::throwLastError();
+        return *this;
+    }
+
+    QueryBuilderBase& lessThan(obx_schema_id propertyId, int64_t value) {
+        obx_qb_cond condition = obx_qb_less_than_int(cQueryBuilder_, propertyId, value);
+        if (condition == 0) internal::throwLastError();
+        return *this;
+    }
+
+    QueryBuilderBase& equalsString(obx_schema_id propertyId, const char* value, bool caseSensitive = true) {
+        obx_qb_cond condition = obx_qb_equals_string(cQueryBuilder_, propertyId, value, caseSensitive);
+        if (condition == 0) internal::throwLastError();
+        return *this;
+    }
+
+    QueryBuilderBase& notEqualsString(obx_schema_id propertyId, const char* value, bool caseSensitive = true) {
+        obx_qb_cond condition = obx_qb_not_equals_string(cQueryBuilder_, propertyId, value, caseSensitive);
+        if (condition == 0) internal::throwLastError();
+        return *this;
+    }
+
+    /// Adds an order based on a given property.
+    /// @param property the property used for the order
+    /// @param flags combination of OBXOrderFlags
+    /// @return the reference to the same QueryBuilder for fluent interface.
+    QueryBuilderBase& order(obx_schema_id propertyId, int flags = 0) {
+        internal::checkErrOrThrow(obx_qb_order(cQueryBuilder_, propertyId, static_cast<OBXOrderFlags>(flags)));
+        return *this;
+    }
+
+    /// Appends given condition/combination of conditions.
+    /// @return the reference to the same QueryBuilder for fluent interface.
+    QueryBuilderBase& with(const QueryCondition& condition) {
+        internalApplyCondition(condition, cQueryBuilder_, true);
+        return *this;
+    }
+
+    /// Once all conditions have been applied, build the query using this method to actually run it.
+    QueryBase buildBase();
+};
+
+/// See QueryBuilderBase for general information on query builders; this templated class allows to work with generated
+/// entity types conveniently.
+/// To specify actual conditions, use obx_qb_*() methods with queryBuilder.cPtr() as the first argument.
+template <typename EntityT>
+class QueryBuilder : public QueryBuilderBase {
+    using EntityBinding = typename EntityT::_OBX_MetaInfo;
+
+public:
+    using QueryBuilderBase::QueryBuilderBase;
+
+    explicit QueryBuilder(Store& store) : QueryBuilderBase(store, EntityBinding::entityId()) {}
 
     /// Adds an order based on a given property.
     /// @param property the property used for the order
@@ -1480,14 +1858,14 @@ public:
     /// @return the reference to the same QueryBuilder for fluent interface.
     template <OBXPropertyType PropType>
     QueryBuilder& order(Property<EntityT, PropType> property, int flags = 0) {
-        internal::checkErrOrThrow(obx_qb_order(cQueryBuilder_, property.id(), static_cast<OBXOrderFlags>(flags)));
+        QueryBuilderBase::order(property.id(), flags);
         return *this;
     }
 
     /// Appends given condition/combination of conditions.
     /// @return the reference to the same QueryBuilder for fluent interface.
-    QueryBuilder& with(const QueryCondition& condition) {
-        internalApplyCondition(condition, cQueryBuilder_, true);
+    QueryBuilder& with(const QueryCondition& condition) {  // Hiding function from base is OK
+        QueryBuilderBase::with(condition);
         return *this;
     }
 
@@ -1555,47 +1933,49 @@ public:
         return linkedQB<RelSourceEntityT>(obx_qb_backlink_standalone(cPtr(), rel.id()));
     }
 
+    /// Once all conditions have been applied, build the query using this method to actually run it.
     Query<EntityT> build();
 
 protected:
     template <typename LinkedEntityT>
-    QueryBuilder<LinkedEntityT> linkedQB(OBX_query_builder* linkedQB) {
-        internal::checkPtrOrThrow(linkedQB, "Can not build query link");
-        // NOTE: linkedQB may be lost if the user doesn't keep the returned sub-builder around and that's fine.
+    QueryBuilder<LinkedEntityT> linkedQB(OBX_query_builder* qb) {
+        internal::checkPtrOrThrow(qb, "Can not build query link");
+        // NOTE: the given qb may be lost if the user doesn't keep the returned sub-builder around and that's fine.
         // We're relying on the C-API keeping track of sub-builders on the root QB.
-        return QueryBuilder<LinkedEntityT>(store_, linkedQB, false);
+        return QueryBuilder<LinkedEntityT>(store_, qb, false);
     }
 };
 
-/// Provides a simple wrapper for OBX_query to simplify memory management - calls obx_query_close() on destruction.
-/// To execute the actual methods, use obx_query_*() methods with query.cPtr() as the first argument.
-/// Internal note: this is a template because it will provide EntityType-specific methods in the future
-template <typename EntityT>
-class Query {
-    OBX_query* cQuery_;
+/// Query allows to find data matching user defined criteria for a entity type.
+/// Created by QueryBuilder and typically used with supplying a Cursor.
+class QueryBase {
+protected:
     Store& store_;
+    OBX_query* cQuery_;
 
 public:
     /// Builds a query with the parameters specified by the builder
-    explicit Query(Store& store, OBX_query_builder* qb) : cQuery_(obx_query(qb)), store_(store) {
+    explicit QueryBase(Store& store, OBX_query_builder* qb) : store_(store), cQuery_(obx_query(qb)) {
         internal::checkPtrOrThrow(cQuery_, "Can not build query");
     }
 
     /// Clones the query
-    Query(const Query& query) : cQuery_(obx_query_clone(query.cQuery_)), store_(query.store_) {
+    QueryBase(const QueryBase& query) : store_(query.store_), cQuery_(obx_query_clone(query.cQuery_)) {
         internal::checkPtrOrThrow(cQuery_, "Can not clone query");
     }
 
-    Query(Query&& source) noexcept : cQuery_(source.cQuery_), store_(source.store_) { source.cQuery_ = nullptr; }
+    QueryBase(QueryBase&& source) noexcept : store_(source.store_), cQuery_(source.cQuery_) {
+        source.cQuery_ = nullptr;
+    }
 
-    virtual ~Query() { obx_query_close(cQuery_); }
+    virtual ~QueryBase() { obx_query_close(cQuery_); }
 
     OBX_query* cPtr() const { return cQuery_; }
 
     /// Sets an offset of what items to start at.
     /// This offset is stored for any further calls on the query until changed.
     /// Call with offset=0 to reset to the default behavior, i.e. starting from the first element.
-    Query& offset(size_t offset) {
+    QueryBase& offset(size_t offset) {
         internal::checkErrOrThrow(obx_query_offset(cQuery_, offset));
         return *this;
     }
@@ -1603,8 +1983,64 @@ public:
     /// Sets a limit on the number of processed items.
     /// This limit is stored for any further calls on the query until changed.
     /// Call with limit=0 to reset to the default behavior - zero limit means no limit applied.
-    Query& limit(size_t limit) {
+    QueryBase& limit(size_t limit) {
         internal::checkErrOrThrow(obx_query_limit(cQuery_, limit));
+        return *this;
+    }
+
+    /// Returns IDs of all matching objects.
+    std::vector<obx_id> findIds() { return internal::idVectorOrThrow(obx_query_find_ids(cQuery_)); }
+
+    /// Returns the number of matching objects.
+    uint64_t count() {
+        uint64_t result;
+        internal::checkErrOrThrow(obx_query_count(cQuery_, &result));
+        return result;
+    }
+
+    /// Removes all matching objects from the database & returns the number of deleted objects.
+    size_t remove() {
+        uint64_t result;
+        internal::checkErrOrThrow(obx_query_remove(cQuery_, &result));
+        return result;
+    }
+
+    /// Change previously set condition value in an existing query - this improves reusability of the query object.
+    QueryBase& setParameter(obx_schema_id entityId, obx_schema_id propertyId, const char* value) {
+        internal::checkErrOrThrow(obx_query_param_string(cQuery_, entityId, propertyId, value));
+        return *this;
+    }
+
+    QueryBase& setParameter(obx_schema_id entityId, obx_schema_id propertyId, const std::string& value) {
+        return setParameter(entityId, propertyId, value.c_str());
+    }
+
+    QueryBase& setParameter(obx_schema_id entityId, obx_schema_id propertyId, int64_t value) {
+        internal::checkErrOrThrow(obx_query_param_int(cQuery_, entityId, propertyId, value));
+        return *this;
+    }
+};
+
+/// Query allows to find data matching user defined criteria for a entity type.
+/// Created by QueryBuilder and typically used with supplying a Cursor.
+template <typename EntityT>
+class Query : public QueryBase {
+public:
+    using QueryBase::QueryBase;
+
+    /// Sets an offset of what items to start at.
+    /// This offset is stored for any further calls on the query until changed.
+    /// Call with offset=0 to reset to the default behavior, i.e. starting from the first element.
+    Query& offset(size_t offset) {  // Hiding function from base is OK
+        QueryBase::offset(offset);
+        return *this;
+    }
+
+    /// Sets a limit on the number of processed items.
+    /// This limit is stored for any further calls on the query until changed.
+    /// Call with limit=0 to reset to the default behavior - zero limit means no limit applied.
+    Query& limit(size_t limit) {  // Hiding function from base is OK
+        QueryBase::limit(limit);
         return *this;
     }
 
@@ -1643,29 +2079,12 @@ public:
     }
 #endif
 
-    /// Returns IDs of all matching objects.
-    std::vector<obx_id> findIds() { return internal::idVectorOrThrow(obx_query_find_ids(cQuery_)); }
-
-    /// Returns the number of matching objects.
-    uint64_t count() {
-        uint64_t result;
-        internal::checkErrOrThrow(obx_query_count(cQuery_, &result));
-        return result;
-    }
-
-    /// Removes all matching objects from the database & returns the number of deleted objects.
-    size_t remove() {
-        uint64_t result;
-        internal::checkErrOrThrow(obx_query_remove(cQuery_, &result));
-        return result;
-    }
-
     /// Change previously set condition value in an existing query - this improves reusability of the query object.
     template <
         typename PropertyEntityT, OBXPropertyType PropertyType,
         typename = enable_if_t<PropertyType == OBXPropertyType_String || PropertyType == OBXPropertyType_StringVector>>
     Query& setParameter(Property<PropertyEntityT, PropertyType> property, const char* value) {
-        internal::checkErrOrThrow(obx_query_param_string(cQuery_, entityId<PropertyEntityT>(), property.id(), value));
+        QueryBase::setParameter(entityId<PropertyEntityT>(), property.id(), value);
         return *this;
     }
 
@@ -1715,7 +2134,7 @@ public:
     /// Change previously set condition value in an existing query - this improves reusability of the query object.
     template <typename PropertyEntityT, OBXPropertyType PropertyType, typename = EnableIfIntegerOrRel<PropertyType>>
     Query& setParameter(Property<PropertyEntityT, PropertyType> property, int64_t value) {
-        internal::checkErrOrThrow(obx_query_param_int(cQuery_, entityId<PropertyEntityT>(), property.id(), value));
+        QueryBase::setParameter(entityId<PropertyEntityT>(), property.id(), value);
         return *this;
     }
 
@@ -1792,6 +2211,13 @@ private:
     }
 };
 
+#ifdef OBX_CPP_FILE
+QueryBase QueryBuilderBase::buildBase() {
+    OBX_VERIFY_STATE(isRoot_);
+    return QueryBase(store_, cQueryBuilder_);
+}
+#endif
+
 template <typename EntityT>
 inline Query<EntityT> QueryBuilder<EntityT>::build() {
     OBX_VERIFY_STATE(isRoot_);
@@ -1822,49 +2248,24 @@ void inline threadLocalFbbDone() {
 }  // namespace internal
 #endif
 
-/// \brief A Box offers database operations for objects of a specific type.
-///
-/// Given a Store, you can create Box instances to interact with object data (e.g. get and put operations).
-/// A Box instance is associated with a specific object type (data class) and gives you a high level API to interact
-/// with data objects of that type.
-///
-/// Box operations automatically start an implicit transaction when accessing the database.
-/// And because transactions offered by this API are always reentrant, you can set your own transaction boundary
-/// using Store::txRead(), Store::txWrite() or Store::tx().
-/// Using these explicit transactions is very much encouraged for calling multiple write operations that
-/// logically belong together for better consistency(ACID) and performance.
-///
-/// Box instances are thread-safe and light-weight wrappers around C-boxes, which are cached internally (see obx_box()).
-template <typename EntityT>
-class Box {
-    friend AsyncBox<EntityT>;
-    using EntityBinding = typename EntityT::_OBX_MetaInfo;
-
+/// Like Box, but without template type.
+/// Serves as the basis for Box, but can also be used as "lower-level" box with some restrictions on the functionality.
+class BoxTypeless {
+protected:
     Store& store_;
     OBX_box* cBox_;
+    const obx_schema_id entityTypeId_;
 
 public:
-    explicit Box(Store& store) : store_(store), cBox_(obx_box(store.cPtr(), EntityBinding::entityId())) {
-        internal::checkPtrOrThrow(cBox_, "Can not create box");
+    BoxTypeless(Store& store, obx_schema_id entityTypeId)
+        : store_(store), cBox_(obx_box(store.cPtr(), entityTypeId)), entityTypeId_(entityTypeId) {
+        if (cBox_ == nullptr) {
+            std::string msg = "Can not create box for entity type ID " + std::to_string(entityTypeId_);
+            internal::checkPtrOrThrow(cBox_, msg.c_str());
+        }
     }
 
     OBX_box* cPtr() const { return cBox_; }
-
-    /// Async operations are available through the AsyncBox class.
-    /// @returns a shared AsyncBox instance with the default timeout (1s) for enqueueing.
-    /// Note: while this looks like it creates a new instance, it's only a thin wrapper and the actual ObjectBox core
-    /// internal async box really is shared.
-    AsyncBox<EntityT> async() { return AsyncBox<EntityT>(*this); }
-
-    /// Start building a query this entity.
-    QueryBuilder<EntityT> query() { return QueryBuilder<EntityT>(store_); }
-
-    /// Start building a query this entity.
-    QueryBuilder<EntityT> query(const QueryCondition& condition) {
-        QueryBuilder<EntityT> qb(store_);
-        internalApplyCondition(condition, qb.cPtr(), true);
-        return qb;
-    }
 
     /// Return the number of objects contained by this box.
     /// @param limit if provided: stop counting at the given limit - useful if you need to make sure the Box has "at
@@ -1899,6 +2300,110 @@ public:
         return result;
     }
 
+    /// Low-level API: read an object as FlatBuffers bytes from the database.
+    /// @return true on success, false if the ID was not found, in which case outObject is untouched.
+    bool get(obx_id id, const void** data, size_t* size);
+
+    /// Low-level API: puts the given FlatBuffers object.
+    /// @returns the ID of the put object or 0 if the operation failed (no exception is thrown).
+    obx_id putNoThrow(void* data, size_t size, OBXPutMode mode = OBXPutMode_PUT);
+
+    obx_id put(void* data, size_t size, OBXPutMode mode = OBXPutMode_PUT);
+
+    /// Remove the object with the given id
+    /// @returns whether the object was removed or not (because it didn't exist)
+    bool remove(obx_id id);
+
+    /// Removes all objects matching the given IDs
+    /// @returns number of removed objects between 0 and ids.size() (if all IDs existed)
+    uint64_t remove(const std::vector<obx_id>& ids);
+
+    /// Removes all objects from the box
+    /// @returns the number of removed objects
+    uint64_t removeAll();
+};
+
+#ifdef OBX_CPP_FILE
+
+BoxTypeless Store::boxTypeless(const char* entityName) { return BoxTypeless(*this, getEntityTypeId(entityName)); }
+
+bool BoxTypeless::get(obx_id id, const void** data, size_t* size) {
+    CursorTx cursor(TxMode::READ, store_, entityTypeId_);
+    obx_err err = obx_cursor_get(cursor.cPtr(), id, data, size);
+    if (err == OBX_NOT_FOUND) return false;
+    internal::checkErrOrThrow(err);
+    return true;
+}
+
+obx_id BoxTypeless::putNoThrow(void* data, size_t size, OBXPutMode mode) {
+    return obx_box_put_object4(cBox_, data, size, mode);
+}
+
+obx_id BoxTypeless::put(void* data, size_t size, OBXPutMode mode) {
+    obx_id id = putNoThrow(data, size, mode);
+    internal::checkIdOrThrow(id);
+    return id;
+}
+
+bool BoxTypeless::remove(obx_id id) {
+    obx_err err = obx_box_remove(cBox_, id);
+    if (err == OBX_NOT_FOUND) return false;
+    internal::checkErrOrThrow(err);
+    return true;
+}
+
+uint64_t BoxTypeless::remove(const std::vector<obx_id>& ids) {
+    uint64_t result = 0;
+    const OBX_id_array cIds = internal::cIdArrayRef(ids);
+    internal::checkErrOrThrow(obx_box_remove_many(cBox_, &cIds, &result));
+    return result;
+}
+
+uint64_t BoxTypeless::removeAll() {
+    uint64_t result = 0;
+    internal::checkErrOrThrow(obx_box_remove_all(cBox_, &result));
+    return result;
+}
+
+#endif
+
+/// \brief A Box offers database operations for objects of a specific type.
+///
+/// Given a Store, you can create Box instances to interact with object data (e.g. get and put operations).
+/// A Box instance is associated with a specific object type (data class) and gives you a high level API to interact
+/// with data objects of that type.
+///
+/// Box operations automatically start an implicit transaction when accessing the database.
+/// And because transactions offered by this API are always reentrant, you can set your own transaction boundary
+/// using Store::txRead(), Store::txWrite() or Store::tx().
+/// Using these explicit transactions is very much encouraged for calling multiple write operations that
+/// logically belong together for better consistency(ACID) and performance.
+///
+/// Box instances are thread-safe and light-weight wrappers around C-boxes, which are cached internally (see obx_box()).
+template <typename EntityT>
+class Box : public BoxTypeless {
+    friend AsyncBox<EntityT>;
+    using EntityBinding = typename EntityT::_OBX_MetaInfo;
+
+public:
+    explicit Box(Store& store) : BoxTypeless(store, EntityBinding::entityId()) {}
+
+    /// Async operations are available through the AsyncBox class.
+    /// @returns a shared AsyncBox instance with the default timeout (1s) for enqueueing.
+    /// Note: while this looks like it creates a new instance, it's only a thin wrapper and the actual ObjectBox core
+    /// internal async box really is shared.
+    AsyncBox<EntityT> async() { return AsyncBox<EntityT>(*this); }
+
+    /// Start building a query this entity.
+    QueryBuilder<EntityT> query() { return QueryBuilder<EntityT>(store_); }
+
+    /// Start building a query this entity.
+    QueryBuilder<EntityT> query(const QueryCondition& condition) {
+        QueryBuilder<EntityT> qb(store_);
+        internalApplyCondition(condition, qb.cPtr(), true);
+        return qb;
+    }
+
     /// Read an object from the database, returning a managed pointer.
     /// @return an object pointer or nullptr if an object with the given ID doesn't exist.
     std::unique_ptr<EntityT> get(obx_id id) {
@@ -1907,15 +2412,14 @@ public:
         return object;
     }
 
+    using BoxTypeless::get;
+
     /// Read an object from the database, replacing the contents of an existing object variable.
     /// @return true on success, false if the ID was not found, in which case outObject is untouched.
     bool get(obx_id id, EntityT& outObject) {
-        CursorTx cursor(TxMode::READ, store_, EntityBinding::entityId());
         const void* data;
         size_t size;
-        obx_err err = obx_cursor_get(cursor.cPtr(), id, &data, &size);
-        if (err == OBX_NOT_FOUND) return false;
-        internal::checkErrOrThrow(err);
+        if (!get(id, &data, &size)) return false;
         EntityBinding::fromFlatBuffer(data, size, outObject);
         return true;
     }
@@ -1927,9 +2431,7 @@ public:
         CursorTx cursor(TxMode::READ, store_, EntityBinding::entityId());
         const void* data;
         size_t size;
-        obx_err err = obx_cursor_get(cursor.cPtr(), id, &data, &size);
-        if (err == OBX_NOT_FOUND) return std::nullopt;
-        internal::checkErrOrThrow(err);
+        if (!BoxTypeless::get(id, &data, &size)) return std::nullopt;
         return EntityBinding::fromFlatBuffer(data, size);
     }
 #endif
@@ -1990,9 +2492,9 @@ public:
     obx_id put(const EntityT& object, OBXPutMode mode = OBXPutMode_PUT) {
         flatbuffers::FlatBufferBuilder& fbb = internal::threadLocalFbbDirty();
         EntityBinding::toFlatBuffer(fbb, object);
-        obx_id id = obx_box_put_object4(cBox_, fbb.GetBufferPointer(), fbb.GetSize(), mode);
+        obx_id id = putNoThrow(fbb.GetBufferPointer(), fbb.GetSize(), mode);
         internal::threadLocalFbbDone();
-        if (id == 0) internal::throwLastError();
+        internal::checkIdOrThrow(id);
         return id;
     }
 
@@ -2035,32 +2537,6 @@ public:
 #endif
 
 #endif  // OBX_DISABLE_FLATBUFFERS
-
-    /// Remove the object with the given id
-    /// @returns whether the object was removed or not (because it didn't exist)
-    bool remove(obx_id id) {
-        obx_err err = obx_box_remove(cBox_, id);
-        if (err == OBX_NOT_FOUND) return false;
-        internal::checkErrOrThrow(err);
-        return true;
-    }
-
-    /// Removes all objects matching the given IDs
-    /// @returns number of removed objects between 0 and ids.size() (if all IDs existed)
-    uint64_t remove(const std::vector<obx_id>& ids) {
-        uint64_t result = 0;
-        const OBX_id_array cIds = internal::cIdArrayRef(ids);
-        internal::checkErrOrThrow(obx_box_remove_many(cBox_, &cIds, &result));
-        return result;
-    }
-
-    /// Removes all objects from the box
-    /// @returns the number of removed objects
-    uint64_t removeAll() {
-        uint64_t result = 0;
-        internal::checkErrOrThrow(obx_box_remove_all(cBox_, &result));
-        return result;
-    }
 
     /// Fetch IDs of all objects in this box that reference the given object (ID) on the given relation property.
     /// Note: This method refers to "property based relations" unlike the "stand-alone relations" (Box::standaloneRel*).
@@ -2230,7 +2706,7 @@ private:
     obx_id cursorPut(CursorTx& cursor, flatbuffers::FlatBufferBuilder& fbb, const EntityT& object, OBXPutMode mode) {
         EntityBinding::toFlatBuffer(fbb, object);
         obx_id id = obx_cursor_put_object4(cursor.cPtr(), fbb.GetBufferPointer(), fbb.GetSize(), mode);
-        if (id == 0) internal::throwLastError();
+        internal::checkIdOrThrow(id);
         return id;
     }
 
@@ -2352,7 +2828,7 @@ public:
         EntityBinding::toFlatBuffer(fbb, object);
         obx_id id = obx_async_put_object4(cPtr(), fbb.GetBufferPointer(), fbb.GetSize(), mode);
         internal::threadLocalFbbDone();
-        if (id == 0) internal::throwLastError();
+        internal::checkIdOrThrow(id);
         return id;
     }
 
@@ -2374,11 +2850,57 @@ public:
     bool awaitSubmitted() { return obx_store_await_async_submitted(store_.cPtr()); }
 };
 
+using AsyncStatusCallback = std::function<void(obx_err err)>;
+
+/// @brief Removal of expired objects; see OBXPropertyFlags_EXPIRATION_TIME.
+class ExpiredObjects {
+public:
+    /// Removes expired objects of one or all entity types.
+    /// @param typeId Type of the objects to be remove; if zero (the default), all types are included.
+    ///        Hint: if you only have the entity type's name, use Store::getEntityTypeIdNoThrow() to get the ID.
+    /// @returns the count of removed objects.
+    /// @see OBXPropertyFlags_EXPIRATION_TIME to define a property for the expiration time.
+    size_t remove(Transaction& tx, obx_schema_id typeId = 0);
+
+    /// Asynchronously removes expired objects of one or all entity types.
+    /// @param typeId Type of the objects to be remove; if zero (the default), all types are included.
+    ///        Hint: if you only have the entity type's name, use Store::getEntityTypeIdNoThrow() to get the ID.
+    /// @see OBXPropertyFlags_EXPIRATION_TIME to define a property for the expiration time.
+    void removeAsync(Store& store, obx_schema_id typeId = 0, AsyncStatusCallback callback = {});
+};
+
+#ifdef OBX_CPP_FILE
+size_t ExpiredObjects::remove(obx::Transaction& tx, obx_schema_id typeId) {
+    size_t removedCount = 0;
+    obx_err err = obx_expired_objects_remove(tx.cPtr(), typeId, &removedCount);
+    internal::checkErrOrThrow(err);
+    return removedCount;
+}
+
+namespace {
+void cCallbackTrampolineStatus(obx_err status, void* userData) {
+    assert(userData);
+    std::unique_ptr<AsyncStatusCallback> callback(static_cast<AsyncStatusCallback*>(userData));
+    (*callback)(status);
+}
+}  // namespace
+
+void ExpiredObjects::removeAsync(Store& store, obx_schema_id typeId, AsyncStatusCallback callback) {
+    bool hasCallback = callback != nullptr;
+    auto funPtr = hasCallback ? new std::function<void(obx_err)>(std::move(callback)) : nullptr;
+    obx_err err = obx_expired_objects_remove_async(store.cPtr(), typeId,
+                                                   hasCallback ? cCallbackTrampolineStatus : nullptr, funPtr);
+    internal::checkErrOrThrow(err);
+}
+
+#endif  // OBX_CPP_FILE
+
 /// @brief Structural/behavioral options for a tree passed during tree creation.
 class TreeOptions {
     friend class Tree;
 
     OBX_tree_options* cOptions_;
+    char pathDelimiter_ = '/';
 
 public:
     TreeOptions() : cOptions_(obx_tree_options()) {
@@ -2397,9 +2919,47 @@ public:
     TreeOptions& pathDelimiter(char delimiter) {
         obx_err err = obx_tree_opt_path_delimiter(cOptions_, delimiter);
         internal::checkErrOrThrow(err);
+        pathDelimiter_ = delimiter;
+        return *this;
+    }
+
+    /// Sets the given OBXTreeOptionFlags. Combine multiple flags using bitwise OR.
+    TreeOptions& flags(uint32_t flags) {
+        obx_err err = obx_tree_opt_flags(cOptions_, flags);
+        internal::checkErrOrThrow(err);
         return *this;
     }
 };
+
+/// Regular results in the sense of "not throwing an exception" for put operations via TreeCursor.
+enum class TreePutResult {
+    Undefined,     ///< Not an actual result, will never be returned from a synchronous put operation;
+                   ///< when used in AsyncTreePutResult, however, this indicates an exceptional result.
+    Success,       ///< OK
+    PathNotFound,  ///< Given path did not exist (no meta leaf object given to create it)
+    DidNotPut      ///< According to the given put mode, no put was performed, e.g. "insert but already existed"
+};
+
+namespace internal {
+TreePutResult mapErrorToTreePutResult(obx_err err);
+}  // namespace internal
+
+/// Parameter to AsyncTreePutCallback, which is passed to Tree::putAsync().
+struct AsyncTreePutResult {
+    TreePutResult result;      ///< Non-exceptional results or "Undefined"; in the latter case obx_err has more details
+    obx_err status;            ///< More detailed error code if operation did not succeed
+    obx_id id;                 ///< ID of the leaf that was put if operation succeeded
+    std::string errorMessage;  ///< Non-empty if an error occurred (result is "Undefined")
+
+    ///@returns true if the operation was successful.
+    inline bool isSuccess() { return status == OBX_SUCCESS; }
+
+    /// Alternative to checking error codes: throw an exception instead.
+    /// Note that this will always throw, so you should at least check for a successful outcome, e.g. via isSuccess().
+    [[noreturn]] void throwException() { internal::throwError(status, "Async tree put failed: " + errorMessage); }
+};
+
+using AsyncTreePutCallback = std::function<void(const AsyncTreePutResult& result)>;
 
 /// @brief Top level tree API representing a tree structure/schema associated with a store.
 ///
@@ -2409,37 +2969,137 @@ class Tree {
 
     OBX_tree* cTree_;
 
+    const char pathDelimiter_;
+
 public:
-    explicit Tree(Store& store) : cTree_(obx_tree(store.cPtr(), nullptr)) {
+    explicit Tree(Store& store) : cTree_(obx_tree(store.cPtr(), nullptr)), pathDelimiter_('/') {
         internal::checkPtrOrThrow(cTree_, "Tree could not be created");
     }
 
-    Tree(Store& store, TreeOptions& options) : cTree_(obx_tree(store.cPtr(), options.cOptions_)) {
+    Tree(Store& store, TreeOptions& options)
+        : cTree_(obx_tree(store.cPtr(), options.cOptions_)), pathDelimiter_(options.pathDelimiter_) {
         options.cOptions_ = nullptr;  // Consumed by obx_tree()
         internal::checkPtrOrThrow(cTree_, "Tree could not be created");
     }
 
-    Tree(Store& store, TreeOptions&& options) : cTree_(obx_tree(store.cPtr(), options.cOptions_)) {
+    Tree(Store& store, TreeOptions&& options)
+        : cTree_(obx_tree(store.cPtr(), options.cOptions_)), pathDelimiter_(options.pathDelimiter_) {
         options.cOptions_ = nullptr;  // Consumed by obx_tree()
         internal::checkPtrOrThrow(cTree_, "Tree could not be created");
     }
 
     /// Move constructor "stealing" the C resource from the source
-    Tree(Tree&& source) noexcept : cTree_(source.cTree_) { source.cTree_ = nullptr; }
+    Tree(Tree&& source) noexcept : cTree_(source.cTree_), pathDelimiter_(source.pathDelimiter_) {
+        source.cTree_ = nullptr;
+    }
 
     ~Tree() { obx_tree_close(cTree_); }
 
     /// Can't be copied, single owner of C resources is required (to avoid double-free during destruction)
     Tree(const Tree&) = delete;
+
+    /// Returns the leaf name of the given path (the string component after the last path delimiter).
+    std::string getLeafName(const std::string& path) const;
+
+    /// \brief A "low-level" put operation for a tree leaf using given raw FlatBuffer bytes.
+    /// Any non-existing branches and meta nodes are put on the fly if an optional meta-leaf FlatBuffers is given.
+    /// A typical usage pattern is to first try without the meta-leaf, and if it does not work, create the meta-leaf and
+    /// call again with the meta leaf. This approach takes into account that meta-leaves typically exist, and thus no
+    /// resources are wasted for meta-leaf creation if it's not required.
+    /// An advantage of using "raw" operations is that custom properties can be passed in the FlatBuffers.
+    /// @param data prepared FlatBuffers bytes for the data leaf (non-const as the data buffer will be mutated);
+    ///        note: slots for IDs must be already be prepared (zero values)
+    /// @param type value type of the given leafObject: it has to be passed to verify against stored metadata
+    /// @param outId Receives the ID of the data leaf object that was put (pointer can be null)
+    /// @param metadata optional FlatBuffers for the meta leaf; at minimum, "name" and "type" must be set.
+    ///        Note: slots for IDs must be already be prepared (zero values).
+    ///        Passing null indicates that the branches and meta nodes must already exist; otherwise
+    ///        the operation will fail and OBX_NOT_FOUND will be returned.
+    /// @param dataPutMode For the data leaf only (the actual value tree node)
+    /// @param callback Once the operation has completed (successfully or not), the callback is called with
+    ///        AsyncTreePutResult.
+    void putAsync(const char* path, void* data, size_t size, OBXPropertyType type, void* metadata = nullptr,
+                  size_t metadata_size = 0, OBXPutMode dataPutMode = OBXPutMode_PUT,
+                  AsyncTreePutCallback callback = {});
+
+    /// Like putAsync(), but the callback uses a C function ptr and user data instead of a std::function wrapper.
+    void putAsyncRawCallback(const char* path, void* data, size_t size, OBXPropertyType type, void* metadata = nullptr,
+                             size_t metadata_size = 0, OBXPutMode dataPutMode = OBXPutMode_PUT,
+                             obx_tree_async_put_callback* callback = nullptr, void* callback_user_data = nullptr);
+
+    /// Explicitly consolidates tree node conflicts (non unique nodes sharing a common path) asynchronously.
+    void consolidateNodeConflictsAsync();
+
+    /// Gets the number of currently tracked node conflicts (non-unique nodes at the same path).
+    /// This count gets resent when conflicts get consolidated.
+    /// Only tracked if OBXTreeOptionFlags_DetectNonUniqueNodes (or OBXTreeOptionFlags_AutoConsolidateNonUniqueNodes) is
+    /// set.
+    size_t nodeConflictCount() { return obx_tree_node_conflict_count(cTree_); }
 };
 
-/// Regular results in the sense of "not throwing an exception" for put operations via TreeCursor.
-enum class TreePutResult {
-    Undefined,     ///< Not an actual result, will never be returned from a put operation
-    Success,       ///< OK
-    PathNotFound,  ///< Given path did not exist (no meta leaf object given to create it)
-    DidNotPut      ///< According to the given put mode, no put was performed, e.g. "insert but already existed"
-};
+#ifdef OBX_CPP_FILE
+
+std::string Tree::getLeafName(const std::string& path) const {
+    std::string leafName;
+    auto lastDelimiter = path.find_last_of(pathDelimiter_);
+    if (lastDelimiter == std::string ::npos) {
+        leafName = path;
+    } else {
+        leafName = path.substr(lastDelimiter + 1);
+    }
+    return leafName;
+}
+
+namespace internal {
+TreePutResult mapErrorToTreePutResult(obx_err err) {
+    if (err == OBX_SUCCESS) {
+        return TreePutResult::Success;
+    } else if (err == OBX_NOT_FOUND) {
+        return TreePutResult::PathNotFound;
+    } else if (err == OBX_NO_SUCCESS) {
+        return TreePutResult::DidNotPut;
+    } else {
+        return TreePutResult::Undefined;
+    }
+}
+}  // namespace internal
+
+void Tree::putAsyncRawCallback(const char* path, void* data, size_t size, OBXPropertyType type, void* metadata,
+                               size_t metadata_size, OBXPutMode dataPutMode, obx_tree_async_put_callback* callback,
+                               void* callback_user_data) {
+    obx_err err = obx_tree_async_put_raw(cTree_, path, data, size, type, metadata, metadata_size, dataPutMode, callback,
+                                         callback_user_data);
+    internal::checkErrOrThrow(err);
+}
+
+namespace {
+void cCallbackTrampolineAsyncTreePut(obx_err status, obx_id id, void* userData) {
+    assert(userData);
+    std::unique_ptr<AsyncTreePutCallback> callback(static_cast<AsyncTreePutCallback*>(userData));
+    std::string errorMessage;
+    if (status != OBX_SUCCESS) internal::appendLastErrorText(status, errorMessage);
+    AsyncTreePutResult result{internal::mapErrorToTreePutResult(status), status, id, std::move(errorMessage)};
+    (*callback)(result);
+}
+}  // namespace
+
+void Tree::putAsync(const char* path, void* data, size_t size, OBXPropertyType type, void* metadata,
+                    size_t metadata_size, OBXPutMode dataPutMode,
+                    std::function<void(const AsyncTreePutResult& result)> callback) {
+    bool hasCallback = callback != nullptr;
+    auto funPtr = hasCallback ? new std::function<void(const AsyncTreePutResult&)>(std::move(callback)) : nullptr;
+    obx_tree_async_put_callback* cCallback = hasCallback ? cCallbackTrampolineAsyncTreePut : nullptr;
+    obx_err err =
+        obx_tree_async_put_raw(cTree_, path, data, size, type, metadata, metadata_size, dataPutMode, cCallback, funPtr);
+    internal::checkErrOrThrow(err);
+}
+
+void Tree::consolidateNodeConflictsAsync() {
+    obx_err err = obx_tree_async_consolidate_node_conflicts(cTree_);
+    internal::checkErrOrThrow(err);
+}
+
+#endif
 
 /// \brief Primary tree interface against the database.
 /// Offers tree path based get/put functionality.
@@ -2505,20 +3165,23 @@ public:
     ///        Passing null indicates that the branches and meta nodes must already exist; otherwise
     ///        the operation will fail and OBX_NOT_FOUND will be returned.
     /// @param dataPutMode For the data leaf only (the actual value tree node)
-    /// @return a non-zero object ID if the put was successful
-    /// @return 0 (zero) if the path did not exist (and no metadata was given)
+    /// @returns result status enum
     TreePutResult put(const char* path, void* data, size_t size, OBXPropertyType type, obx_id* outId = nullptr,
                       void* metadata = nullptr, size_t metadata_size = 0, OBXPutMode dataPutMode = OBXPutMode_PUT) {
         obx_err err =
             obx_tree_cursor_put_raw(cCursor_, path, data, size, type, outId, metadata, metadata_size, dataPutMode);
-        if (err == OBX_SUCCESS) {
-            return TreePutResult::Success;
-        } else if (err == OBX_NOT_FOUND) {
-            return TreePutResult::PathNotFound;
-        } else if (err == OBX_NO_SUCCESS) {
-            return TreePutResult::DidNotPut;
-        }
-        internal::throwLastError(err);
+        TreePutResult result = internal::mapErrorToTreePutResult(err);
+        if (result == TreePutResult::Undefined) internal::throwLastError(err);
+        return result;
+    }
+
+    /// Explicitly consolidates tree node conflicts (non unique nodes sharing a common path).
+    /// See also Tree::consolidateNodeConflictsAsync() for an asynchronous version.
+    size_t consolidateNodeConflicts() {
+        size_t count = 0;
+        obx_err err = obx_tree_cursor_consolidate_node_conflicts(cCursor_, &count);
+        internal::checkErrOrThrow(err);
+        return count;
     }
 };
 

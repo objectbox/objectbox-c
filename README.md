@@ -4,6 +4,10 @@ ObjectBox Embedded Database for C and C++
 The out-of-the-box [Data Sync](https://objectbox.io/sync/) keeps data in sync across devices and any kind of backend/cloud reliably for occasionally connected devices.
 ObjectBox Data Persistence and Data Sync follows an offline-first approach and can be used on-premise as well as with a cloud setup.
 
+*********************************************************************************************************************************
+Jobs: We're looking for a [C++ Developer](https://objectbox.io/jobs/objectbox-senior-c-plusplus-developer/) with a ❤️ for performant code
+*********************************************************************************************************************************
+
 This is the **ObjectBox runtime library** to run ObjectBox as an embedded database in your C or C++ application.
 
 Here's a C++ example that inserts a `Task` data object (a plain user defined `struct`) into the database:

@@ -1,5 +1,5 @@
 /*
- * Copyright 2018-2022 ObjectBox Ltd. All rights reserved.
+ * Copyright 2018-2023 ObjectBox Ltd. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,7 +34,7 @@
 #include "objectbox.h"
 
 #if defined(static_assert) || defined(__cplusplus)
-static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 18 && OBX_VERSION_PATCH == 0,  // NOLINT
+static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 18 && OBX_VERSION_PATCH == 1,  // NOLINT
               "Versions of objectbox.h and objectbox-sync.h files do not match, please update");
 #endif
 
@@ -505,7 +505,7 @@ typedef void OBX_custom_msg_server_func_client_connection_shutdown(void* connect
 /// Struct of the custom server function callbacks. In order to implement the custom server, you must provide
 /// custom methods for each of the members of this struct. This is then passed to obx_custom_msg_server_register()
 /// to register the custom server.
-struct OBX_custom_msg_server_functions {
+typedef struct OBX_custom_msg_server_functions {
     /// Must be initialized with sizeof(OBX_custom_msg_server_functions) to "version" the struct.
     /// This allows the library (whi) to detect older or newer versions and react properly.
     size_t version;
@@ -518,7 +518,7 @@ struct OBX_custom_msg_server_functions {
     OBX_custom_msg_server_func_client_connection_send_async* func_conn_send_async;
     OBX_custom_msg_server_func_client_connection_close* func_conn_close;
     OBX_custom_msg_server_func_client_connection_shutdown* func_conn_shutdown;
-};
+} OBX_custom_msg_server_functions;
 
 /// Must be called to register a protocol for a custom messaging server. Call before starting a server.
 /// @param protocol the communication protocol to use, e.g. "tcp"
@@ -613,7 +613,7 @@ typedef void OBX_custom_msg_client_func_clear_outgoing_messages(void* client_use
 /// Struct of the custom client function callbacks. In order to implement the custom client, you must provide
 /// custom methods for each of the members of this struct. This is then passed to obx_custom_msg_client_register()
 /// to register the custom client.
-struct OBX_custom_msg_client_functions {
+typedef struct OBX_custom_msg_client_functions {
     /// Must be initialized with sizeof(OBX_custom_msg_client_functions) to "version" the struct.
     /// This allows the library to detect older or newer versions and react properly.
     size_t version;
@@ -627,7 +627,7 @@ struct OBX_custom_msg_client_functions {
     OBX_custom_msg_client_func_shutdown* func_shutdown;
     OBX_custom_msg_client_func_send_async* func_send_async;
     OBX_custom_msg_client_func_clear_outgoing_messages* func_clear_outgoing_messages;
-};
+} OBX_custom_msg_client_functions;
 
 /// States of custom msg client that must be forwarded to obx_custom_msg_client_set_state().
 typedef enum {

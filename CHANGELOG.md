@@ -1,6 +1,12 @@
 ObjectBox C and C++ API Changelog
 =================================
 
+0.18.1 (2023-01-30)
+-------------------
+Recommended bugfix release, generally recommended to update.
+
+* Fixes "Could not put (-30786)", which may occur in some corner cases on some platforms.
+
 0.18.0 (2022-10-31)
 -------------------
 * Date properties can now be tagged as expiration time; which can be then be easily evicted

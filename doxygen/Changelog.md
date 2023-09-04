@@ -3,6 +3,20 @@
 ObjectBox C and C++ API Changelog
 =================================
 
+0.19.0 (2023-09-04)
+-------------------
+* New K/V validation option on opening the store
+* Additions cursor API: get current ID, ID-based seeks (seek to first ID, seek to next ID)
+* Support scalar vector types with basic queries (APIs only, no generator support)
+* Various tree API improvements, e.g. introspection
+* Minor API clean up: e.g. using int types for bit flags not enums
+* Fixes query link condition in combination with some "or" conditions
+* Fixes query "less" condition for case-sensitive strings with value indexes (default is hashed index)
+* Updated Linux toolchain; now requires glibc 2.28 or higher (and GLIBCXX_3.4.25);
+  e.g. the following minium versions are fine: Debian Buster 10 (2019), Ubuntu 20.04, RHEL 8 (2019)
+* Various internal improvements
+* Sync: various additions and improvements (client and server)
+
 0.18.1 (2023-01-30)
 -------------------
 Recommended bugfix release, generally recommended to update.
@@ -11,7 +25,7 @@ Recommended bugfix release, generally recommended to update.
 
 0.18.0 (2022-10-31)
 -------------------
-* Date properties can now be tagged as expiration time; which can be then be easily evicted
+* Date properties can now be tagged as expiration time, which can then be easily evicted
 * Tree API: various additions and improvements, e.g. OBXTreeOptionFlags to configure the tree behavior 
 * New query condition to match objects that have a given number of relations
 * New "max data size" store setting

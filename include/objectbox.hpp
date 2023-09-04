@@ -36,7 +36,7 @@
 #include <optional>
 #endif
 
-static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 18 && OBX_VERSION_PATCH == 1,  // NOLINT
+static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 19 && OBX_VERSION_PATCH == 0,  // NOLINT
               "Versions of objectbox.h and objectbox.hpp files do not match, please update");
 
 #ifdef __clang__
@@ -440,11 +440,20 @@ public:
     /// at least 1.
     /// Note: ObjectBox builds upon ACID storage, which guarantees consistency given that the file system is working
     /// correctly (in particular fsync).
-    /// @param page_limit limits the number of checked pages (currently defaults to 0, but will be increased in the
+    /// @param pageLimit limits the number of checked pages (currently defaults to 0, but will be increased in the
     /// future)
-    /// @param leaf_level enable for visiting leaf pages (defaults to false)
-    Options& validateOnOpen(size_t pageLimit, bool leafLevel) {
-        obx_opt_validate_on_open(opt, pageLimit, leafLevel);
+    /// @param flags flags used to influence how the validation checks are performed
+    Options& validateOnOpenPages(size_t pageLimit, uint32_t flags = OBXValidateOnOpenPagesFlags_None) {
+        obx_opt_validate_on_open_pages(opt, pageLimit, flags);
+        return *this;
+    }
+
+    /// When the DB is opened initially, ObjectBox can do a validation over the key/value pairs to check, for example,
+    /// whether they're consistent towards our internal specification.
+    /// @param flags flags used to influence how the validation checks are performed;
+    ///        only OBXValidateOnOpenKvFlags_None is supported for now.
+    Options& validateOnOpenKv(uint32_t flags = OBXValidateOnOpenKvFlags_None) {
+        obx_opt_validate_on_open_kv(opt, flags);
         return *this;
     }
 
@@ -478,19 +487,19 @@ public:
     }
 
     /// Configure debug flags; e.g. to influence logging. Defaults to NONE.
-    Options& debugFlags(OBXDebugFlags flags) {
+    Options& debugFlags(uint32_t flags) {
         obx_opt_debug_flags(opt, flags);
         return *this;
     }
 
     /// Adds debug flags to potentially existing ones (that were previously set).
-    Options& addDebugFlags(OBXDebugFlags flags) {
+    Options& addDebugFlags(uint32_t flags) {
         obx_opt_add_debug_flags(opt, flags);
         return *this;
     }
 
     /// Gets the option for "debug flags"; this is either the default, or, the value set by debugFlags().
-    uint64_t getDebugFlags() const { return obx_opt_get_debug_flags(opt); }
+    uint32_t getDebugFlags() const { return obx_opt_get_debug_flags(opt); }
 
     /// Maximum of async elements in the queue before new elements will be rejected.
     /// Hitting this limit usually hints that async processing cannot keep up;
@@ -601,6 +610,17 @@ public:
     /// Note: this does not replace the default logging, which is much more extensive (at least at this point).
     Options& logCallback(obx_log_callback* callback, void* userData) {
         obx_opt_log_callback(opt, callback, userData);
+        return *this;
+    }
+
+    /// Before opening the database, this options instructs to restore the database content from the given backup file.
+    /// Note: backup is a server-only feature.
+    /// By default, actually restoring the backup is only performed if no database already exists
+    /// (database does not contain data).
+    /// @param flags For default behavior pass 0, or adjust defaults using OBXBackupRestoreFlags bit flags,
+    ///        e.g., to overwrite all existing data in the database.
+    Options& backupRestore(const char* backupFile, uint32_t flags = 0) {
+        obx_opt_backup_restore(opt, backupFile, flags);
         return *this;
     }
 };
@@ -746,6 +766,14 @@ public:
     /// @returns true if all submissions were completed (or async processing was not started)
     /// @returns false if shutting down or an error occurred
     bool awaitSubmitted() { return obx_store_await_async_submitted(cPtr()); }
+
+    /// Backs up the store DB to the given backup-file, using the given flags.
+    /// Note: backup is a server-only feature.
+    /// @param flags 0 for defaults or OBXBackupFlags bit flags
+    void backUpToFile(const char* backupFile, uint32_t flags = 0) const {
+        obx_err err = obx_store_back_up_to_file(cPtr(), backupFile, flags);
+        internal::checkErrOrThrow(err);
+    }
 
     /// @return an existing SyncClient associated with the store (if available; see Sync::client() to create one)
     /// @note: implemented in objectbox-sync.hpp
@@ -924,9 +952,9 @@ uint64_t Transaction::getDataSizeCommitted() const {
 }
 
 int64_t Transaction::getDataSizeChange() const {
-    uint64_t size = 0;
-    internal::checkErrOrThrow(obx_txn_data_size(cPtr(), nullptr, &size));
-    return size;
+    int64_t sizeChange = 0;
+    internal::checkErrOrThrow(obx_txn_data_size(cPtr(), nullptr, &sizeChange));
+    return sizeChange;
 }
 
 Transaction Store::tx(TxMode mode) { return Transaction(*this, mode); }
@@ -964,6 +992,33 @@ public:
     }
 
     OBX_cursor* cPtr() const { return cCursor_; }
+
+    /// @returns the first object ID or zero if there was no object
+    obx_id seekToFirstId() {
+        obx_id id = 0;
+        obx_err err = obx_cursor_seek_first_id(cCursor_, &id);
+        if (err != OBX_NOT_FOUND) internal::checkErrOrThrow(err);  // return 0 if not found (non-exceptional outcome)
+        return id;
+    }
+
+    /// @returns the next object ID or zero if there was no next object
+    obx_id seekToNextId() {
+        obx_id id = 0;
+        obx_err err = obx_cursor_seek_next_id(cCursor_, &id);
+        if (err != OBX_NOT_FOUND) internal::checkErrOrThrow(err);  // return 0 if not found (non-exceptional outcome)
+        return id;
+    }
+
+    /// Gets the object ID at the current position; ensures being up-to-date by verifying against database.
+    /// If the cursor is not positioned at an actual object, it returns one of two special IDs instead.
+    /// @returns 0 (OBJECT_ID_BEFORE_START) if the cursor was not yet moved or reached the end (going backwards).
+    /// @returns 0xFFFFFFFFFFFFFFFF (OBJECT_ID_BEYOND_END) if the cursor reached the end (going forwards).
+    obx_id getCurrentId() {
+        obx_id id = 0;
+        obx_err err = obx_cursor_current_id(cCursor_, &id);
+        if (err != OBX_NOT_FOUND) internal::checkErrOrThrow(err);  // return 0 if not found (non-exceptional outcome)
+        return id;
+    }
 };
 
 /// Collects all visited data
@@ -1824,8 +1879,8 @@ public:
     /// @param property the property used for the order
     /// @param flags combination of OBXOrderFlags
     /// @return the reference to the same QueryBuilder for fluent interface.
-    QueryBuilderBase& order(obx_schema_id propertyId, int flags = 0) {
-        internal::checkErrOrThrow(obx_qb_order(cQueryBuilder_, propertyId, static_cast<OBXOrderFlags>(flags)));
+    QueryBuilderBase& order(obx_schema_id propertyId, uint32_t flags = 0) {
+        internal::checkErrOrThrow(obx_qb_order(cQueryBuilder_, propertyId, flags));
         return *this;
     }
 
@@ -1857,7 +1912,7 @@ public:
     /// @param flags combination of OBXOrderFlags
     /// @return the reference to the same QueryBuilder for fluent interface.
     template <OBXPropertyType PropType>
-    QueryBuilder& order(Property<EntityT, PropType> property, int flags = 0) {
+    QueryBuilder& order(Property<EntityT, PropType> property, uint32_t flags = 0) {
         QueryBuilderBase::order(property.id(), flags);
         return *this;
     }
@@ -2302,7 +2357,12 @@ public:
 
     /// Low-level API: read an object as FlatBuffers bytes from the database.
     /// @return true on success, false if the ID was not found, in which case outObject is untouched.
-    bool get(obx_id id, const void** data, size_t* size);
+    bool get(CursorTx& cTx, obx_id id, const void** data, size_t* size) {
+        obx_err err = obx_cursor_get(cTx.cPtr(), id, data, size);
+        if (err == OBX_NOT_FOUND) return false;
+        internal::checkErrOrThrow(err);
+        return true;
+    }
 
     /// Low-level API: puts the given FlatBuffers object.
     /// @returns the ID of the put object or 0 if the operation failed (no exception is thrown).
@@ -2326,14 +2386,6 @@ public:
 #ifdef OBX_CPP_FILE
 
 BoxTypeless Store::boxTypeless(const char* entityName) { return BoxTypeless(*this, getEntityTypeId(entityName)); }
-
-bool BoxTypeless::get(obx_id id, const void** data, size_t* size) {
-    CursorTx cursor(TxMode::READ, store_, entityTypeId_);
-    obx_err err = obx_cursor_get(cursor.cPtr(), id, data, size);
-    if (err == OBX_NOT_FOUND) return false;
-    internal::checkErrOrThrow(err);
-    return true;
-}
 
 obx_id BoxTypeless::putNoThrow(void* data, size_t size, OBXPutMode mode) {
     return obx_box_put_object4(cBox_, data, size, mode);
@@ -2417,9 +2469,10 @@ public:
     /// Read an object from the database, replacing the contents of an existing object variable.
     /// @return true on success, false if the ID was not found, in which case outObject is untouched.
     bool get(obx_id id, EntityT& outObject) {
+        CursorTx ctx(TxMode::READ, store_, EntityBinding::entityId());
         const void* data;
         size_t size;
-        if (!get(id, &data, &size)) return false;
+        if (!get(ctx, id, &data, &size)) return false;
         EntityBinding::fromFlatBuffer(data, size, outObject);
         return true;
     }
@@ -2428,10 +2481,10 @@ public:
     /// Read an object from the database.
     /// @return an "optional" wrapper of the object; empty if an object with the given ID doesn't exist.
     std::optional<EntityT> getOptional(obx_id id) {
-        CursorTx cursor(TxMode::READ, store_, EntityBinding::entityId());
+        CursorTx ctx(TxMode::READ, store_, EntityBinding::entityId());
         const void* data;
         size_t size;
-        if (!BoxTypeless::get(id, &data, &size)) return std::nullopt;
+        if (!BoxTypeless::get(ctx, id, &data, &size)) return std::nullopt;
         return EntityBinding::fromFlatBuffer(data, size);
     }
 #endif
@@ -3101,11 +3154,44 @@ void Tree::consolidateNodeConflictsAsync() {
 
 #endif
 
+class TreeCursor;
+
+/// Information about a set of leaf nodes that is returned by TreeCursor::getLeavesInfo().
+/// Contains meta data about (data) leaves: full path in the tree, ID, and property type.
+class LeavesInfo {
+    friend class TreeCursor;
+
+    OBX_tree_leaves_info* cLeavesInfo_;
+
+    LeavesInfo(OBX_tree_leaves_info* cLeavesInfo) : cLeavesInfo_(cLeavesInfo) {}
+
+public:
+    ~LeavesInfo() { obx_tree_leaves_info_free(cLeavesInfo_); }
+
+    /// Gets the number of leaves.
+    size_t size() { return obx_tree_leaves_info_size(cLeavesInfo_); }
+
+    /// Gets the path of a given leaf (by index).
+    /// @returns a C string that is valid until
+    const char* leafPathCString(size_t index) { return obx_tree_leaves_info_path(cLeavesInfo_, index); }
+
+    /// Gets the path of a given leaf (by index).
+    std::string leafPath(size_t index) { return leafPathCString(index); }
+
+    /// Gets the property type (as OBXPropertyType) of a given leaf (by index).
+    /// @returns OBXPropertyType_Unknown if no property type was found.
+    OBXPropertyType leafPropertyType(size_t index) { return obx_tree_leaves_info_type(cLeavesInfo_, index); }
+
+    /// Gets the id of a given leaf (by index).
+    obx_id leafId(size_t index) { return obx_tree_leaves_info_id(cLeavesInfo_, index); }
+};
+
 /// \brief Primary tree interface against the database.
 /// Offers tree path based get/put functionality.
 /// Not-thread safe: use a TreeCursor instance from one thread only; i.e. the underlying transaction is bound to a
 /// thread.
 class TreeCursor {
+    friend class LeavesInfo;
     OBX_tree_cursor* cCursor_;
 
 public:
@@ -3149,6 +3235,37 @@ public:
         internal::checkErrOrThrow(err);
         return true;
     }
+
+    /// Gets the full path (from the root) of the given leaf ID (allocated C string version).
+    /// @returns If successful, an allocated path is returned (malloc), which must be free()-ed by the caller.
+    /// @returns If not successful, NULL is returned.
+    const char* getLeafPathCString(obx_id leafId) { return obx_tree_cursor_get_leaf_path(cCursor_, leafId); }
+
+    /// Gets the full path (from the root) of the given leaf ID (allocated C string version).
+    /// @returns The path or an empty string if not successful.
+    std::string getLeafPath(obx_id leafId) {
+        const char* path = obx_tree_cursor_get_leaf_path(cCursor_, leafId);
+        if (path) {
+            std::string pathStr(path);
+            free(const_cast<char*>(path));
+            return pathStr;
+        }
+        return std::string();
+    }
+
+    /// \brief Given an existing path, return all existing leaves with their paths.
+    /// As this traverses the data tree (i.e. not the meta tree), it will only return nodes that exist (obviously).
+    /// Thus, the meta tree may contain additional paths, but these are unused by the data tree (currently at least).
+    /// @param path the branch or leaf path to use. Optional: if no path is given, the root node is taken.
+    /// @returns leaf info ordered by path depth (i.e. starting from paths with the smallest number of branches); paths
+    ///          at same depth are ordered by id.
+    LeavesInfo getLeavesInfo(const char* path = nullptr) {
+        OBX_tree_leaves_info* cLeavesInfo = obx_tree_cursor_get_child_leaves_info(cCursor_, path);
+        internal::checkPtrOrThrow(cLeavesInfo, "Could not create leaves info");
+        return LeavesInfo(cLeavesInfo);
+    }
+
+    inline LeavesInfo getLeavesInfo(const std::string& path) { return getLeavesInfo(path.c_str()); }
 
     /// \brief A "low-level" put operation for a tree leaf using given raw FlatBuffer bytes.
     /// Any non-existing branches and meta nodes are put on the fly if an optional meta-leaf FlatBuffers is given.

@@ -1,5 +1,5 @@
 /*
- * Copyright 2018-2020 ObjectBox Ltd. All rights reserved.
+ * Copyright 2018-2023 ObjectBox Ltd. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -164,6 +164,7 @@ int do_action_new(OBX_store* store, int argc, char* argv[]) {
     size_t size = 0;
     OBX_txn* txn = NULL;
     OBX_cursor* cursor = NULL;
+    bool success = false;
 
     // grab the task text from the command line
     if (parse_text(argc, argv, &text) <= 0) {
@@ -186,7 +187,7 @@ int do_action_new(OBX_store* store, int argc, char* argv[]) {
 
     // Get an ID for our soon-to-be-created task entity
     obx_id id = obx_cursor_id_for_put(cursor, 0);
-    if (!id) {
+    if (id == 0) {
         goto clean_up;
     }
 
@@ -199,30 +200,29 @@ int do_action_new(OBX_store* store, int argc, char* argv[]) {
     if (obx_cursor_put_new(cursor, id, buff, size)) {
         goto clean_up;
     }
+    printf("New task created with ID %" PRIu64 ": %s\n", id, text);
+    success = true;
 
 clean_up:
-    if (!obx_last_error_code()) {
-        printf("New task: %" PRIu64 " - %s\n", id, text);
-    } else {
+    if (!success) {
         printf("Failed to create the task\n");
     }
+    obx_err error_code = obx_last_error_code();
 
-    if (cursor) {
-        obx_cursor_close(cursor);
-    }
-
-    if (txn && !obx_last_error_code()) {
-        obx_txn_success(txn);
-    }
+    obx_cursor_close(cursor);  // cursor may be NULL
 
     if (txn) {
-        obx_txn_close(txn);
+        if (success && error_code == OBX_SUCCESS) {
+            obx_txn_success(txn);
+        } else {
+            obx_txn_close(txn);
+        }
     }
 
     free(text);
     free(buff);
 
-    return obx_last_error_code();
+    return error_code;
 }
 
 //--------------------------------------------------------------------------------------------------------------------
@@ -395,7 +395,7 @@ int parse_text(int argc, char** argv, char** outText) {
         return -1;
     }
 
-    *outText = (char*) malloc(sizeof(char) * (size_t)(size + 1));
+    *outText = (char*) malloc(sizeof(char) * (size_t) (size + 1));
     if (!*outText) {
         printf("Could not process task text\n");
         return -1;
@@ -446,14 +446,14 @@ int task_build(void** out_buff, size_t* out_size, obx_id id, const char* text, u
     return rc;
 }
 
-uint64_t timestamp_now() { return (uint64_t)(time(NULL) * 1000); }
+uint64_t timestamp_now() { return (uint64_t) (time(NULL) * 1000); }
 
 void date_to_str(char* buff, uint64_t timestamp) {
     if (!timestamp) {
         // empty string
         buff[0] = '\0';
     } else {
-        time_t time = (time_t)(timestamp / 1000);
+        time_t time = (time_t) (timestamp / 1000);
         struct tm* tm_info = localtime(&time);
         strftime(buff, DATE_BUFFER_LENGTH, DATE_FORMAT_STRING, tm_info);
     }

@@ -3,6 +3,18 @@
 ObjectBox C and C++ API Changelog
 =================================
 
+0.20.0 (2023-12-11)
+-------------------
+* Added OBXFeature_Backup to query for the feature's availability
+* Internal: added a DB store abstraction layer (another announcement about this will follow)
+* Tree API: fix for meta IDs vs. IDs
+* Various internal improvements
+
+Sync:
+
+* Sync clients may now supply multiple URLs; for each connection attempt a random one is chosen.
+  This allows for client-side load balancing and failover with an ObjectBox Sync cluster.
+
 0.19.0 (2023-09-04)
 -------------------
 * New K/V validation option on opening the store

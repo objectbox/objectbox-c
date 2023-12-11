@@ -37,10 +37,11 @@ int put_foo(OBX_cursor* cursor, uint64_t* idInOut, char* text) {
 
 err:
     flatcc_builder_clear(&builder);
-    if (rc == 0)
+    if (rc == 0) {
         return -1;
-    else
+    } else {
         return rc;
+    }
 }
 
 Foo* get_foo(OBX_cursor* cursor, uint64_t id) {
@@ -109,6 +110,14 @@ obx_err testPutAndGetFlatObjects(OBX_cursor* cursor) {
 int main(int argc, char* args[]) {
     printf("Testing libobjectbox version %s, core version: %s\n", obx_version_string(), obx_version_core_string());
     printf("Result array support: %d\n", obx_has_feature(OBXFeature_ResultArray));
+
+#ifdef OBX_Feature_Lmdb  // If LMDB is unavailable, always register in-memory as default
+    if (argc >= 2 && strcmp(args[1], "--in-memory") == 0)
+#endif
+    {
+        printf("Enable in-memory\n");
+        obx_store_type_id_register_default(OBXStoreTypeId_InMemory);
+    }
 
     OBX_store* store = NULL;
     OBX_txn* txn = NULL;

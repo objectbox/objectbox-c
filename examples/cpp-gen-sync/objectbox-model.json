@@ -23,14 +23,12 @@
         {
           "id": "4:1260602348787983453",
           "name": "date_created",
-          "type": 10,
-          "flags": 8192
+          "type": 10
         },
         {
           "id": "5:6240065879507520219",
           "name": "date_finished",
-          "type": 10,
-          "flags": 8192
+          "type": 10
         }
       ]
     }

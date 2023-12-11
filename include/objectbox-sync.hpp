@@ -19,7 +19,7 @@
 #include "objectbox-sync.h"
 #include "objectbox.hpp"
 
-static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 19 && OBX_VERSION_PATCH == 0,  // NOLINT
+static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 20 && OBX_VERSION_PATCH == 0,  // NOLINT
               "Versions of objectbox.h and objectbox-sync.hpp files do not match, please update");
 
 namespace obx {
@@ -238,8 +238,15 @@ class SyncClient : public Closable {
 public:
     /// Creates a sync client associated with the given store and options.
     /// This does not initiate any connection attempts yet: call start() to do so.
-    explicit SyncClient(Store& store, const std::string& serverUrl, const SyncCredentials& creds)
-        : store_(store), cSync_(obx_sync(store.cPtr(), serverUrl.c_str())) {
+    explicit SyncClient(Store& store, const std::vector<std::string>& serverUrls, const SyncCredentials& creds)
+        : store_(store) {
+        std::vector<const char*> urlPointers;  // Convert serverUrls to a vector of C strings for the C API
+        urlPointers.reserve(serverUrls.size());
+        for (const std::string& serverUrl : serverUrls) {
+            urlPointers.emplace_back(serverUrl.c_str());
+        }
+        cSync_ = obx_sync_urls(store.cPtr(), urlPointers.data(), urlPointers.size());
+
         internal::checkPtrOrThrow(cSync_, "Could not initialize sync client");
         try {
             setCredentials(creds);
@@ -248,6 +255,9 @@ public:
             throw;
         }
     }
+
+    explicit SyncClient(Store& store, const std::string& serverUrl, const SyncCredentials& creds)
+        : SyncClient(store, std::vector<std::string>{serverUrl}, creds) {}
 
     /// Creates a sync client associated with the given store and options.
     /// This does not initiate any connection attempts yet: call start() to do so.

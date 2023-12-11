@@ -36,7 +36,7 @@
 #include <optional>
 #endif
 
-static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 19 && OBX_VERSION_PATCH == 0,  // NOLINT
+static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 20 && OBX_VERSION_PATCH == 0,  // NOLINT
               "Versions of objectbox.h and objectbox.hpp files do not match, please update");
 
 #ifdef __clang__
@@ -714,6 +714,8 @@ public:
 
     /// @returns non-zero ID for the Store
     uint64_t id() const;
+
+    uint32_t getStoreTypeId() { return obx_store_type_id(cPtr()); }
 
     template <class EntityBinding>
     Box<EntityBinding> box() {

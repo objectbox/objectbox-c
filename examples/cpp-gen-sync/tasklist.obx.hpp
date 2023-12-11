@@ -15,8 +15,8 @@ struct Task_;
 struct Task {
     obx_id id;
     std::string text;
-    uint64_t date_created;
-    uint64_t date_finished;
+    int64_t date_created;
+    int64_t date_finished;
 
     struct _OBX_MetaInfo {
         static constexpr obx_schema_id entityId() { return 1; }

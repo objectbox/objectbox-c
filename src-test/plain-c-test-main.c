@@ -176,10 +176,19 @@ int main(int argc, char* args[]) {
     printf("Testing libobjectbox version %s, core version: %s\n", obx_version_string(), obx_version_core_string());
     printf("Result array support: %d\n", obx_has_feature(OBXFeature_ResultArray));
 
+#ifdef OBX_Feature_Lmdb  // If LMDB is unavailable, always register in-memory as default
+    if (argc >= 2 && strcmp(args[1], "--in-memory") == 0)
+#endif
+    {
+        printf("Enable in-memory\n");
+        obx_store_type_id_register_default(OBXStoreTypeId_InMemory);
+    }
+
     OBX_store* store = NULL;
     OBX_txn* txn = NULL;
     OBX_cursor* cursor = NULL;
     OBX_cursor* cursor_bar = NULL;
+    int rc = 0;
 
     // Firstly, we need to create a model for our data and the store
     {
@@ -205,8 +214,6 @@ int main(int argc, char* args[]) {
     // Clear any existing data
     if (obx_cursor_remove_all(cursor_bar)) goto handle_error;
     if (obx_cursor_remove_all(cursor)) goto handle_error;
-
-    int rc;
 
     if ((rc = testCursorStuff(cursor))) goto handle_error;
 

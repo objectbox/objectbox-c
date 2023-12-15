@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.0)
 
 project(ObjectBoxCRoot) # to be displayed in an IDE when this CMake is opened
 
+set(OBX_DISABLE_EXAMPLES OFF CACHE BOOL "Enable/disable including the ObjectBox examples")
+
 if (${CMAKE_VERSION} VERSION_LESS "3.11.0")
     message("Please consider upgrading your CMake to a more recent version (v3.11+) to get automatic library download.")
     if (NOT IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/lib")
@@ -78,4 +80,7 @@ endif ()
 
 add_subdirectory(src-test)
 add_subdirectory(src-test-gen)
-add_subdirectory(examples)
+
+if (NOT DEFINED OBX_DISABLE_EXAMPLES OR NOT ${OBX_DISABLE_EXAMPLES})
+    add_subdirectory(examples)
+endif ()

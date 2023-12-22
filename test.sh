@@ -34,7 +34,11 @@ echo "Building into \"${buildDir}\"..."
 mkdir -p ${buildDir}
 cd ${buildDir}
 cmake ..
-cmake --build .
+cmake --build . --target objectbox-c-test
+cmake --build . --target objectbox-c-gen-test
+cmake --build . --target objectbox-c-examples-tasks-c-gen
+cmake --build . --target objectbox-c-examples-tasks-cpp-gen
+cmake --build . --target objectbox-c-examples-tasks-cpp-gen-sync
 (cd src-test/${buildSubDir} && ${testPrepCmd} && ./objectbox-c-test)
 (cd src-test-gen/${buildSubDir} && ${testPrepCmd} && ./objectbox-c-gen-test)
 

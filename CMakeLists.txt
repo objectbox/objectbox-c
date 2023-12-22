@@ -1,6 +1,14 @@
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 3.5) 
+# 3.5: Since CMake 3.27 VERSION < 3.5 produce a deprecation warning.
 
 project(ObjectBoxCRoot) # to be displayed in an IDE when this CMake is opened
+
+# Remove Warning (as of CMake >= 3.24): 
+# "The DOWNLOAD_EXTRACT_TIMESTAMP option was not given.." 
+# We use the new behaviour (file timestamps from downloaded/extracted archives are updated).
+if(POLICY CMP0135)
+    cmake_policy(SET CMP0135 NEW)
+endif()
 
 if (${CMAKE_VERSION} VERSION_LESS "3.11.0")
     message("Please consider upgrading your CMake to a more recent version (v3.11+) to get automatic library download.")
@@ -76,6 +84,8 @@ else ()
     endif ()
 endif ()
 
-add_subdirectory(src-test)
-add_subdirectory(src-test-gen)
-add_subdirectory(examples)
+# By default we exclude tests and examples.
+# If you want to build them please "make" them explicitly by target name (see targets below)
+add_subdirectory(src-test EXCLUDE_FROM_ALL)     # target:  objectbox-c-test
+add_subdirectory(src-test-gen EXCLUDE_FROM_ALL) # target:  objectbox-c-gen-test
+add_subdirectory(examples EXCLUDE_FROM_ALL)     # targets: objectbox-c-examples-tasks-{c,cpp-gen,cpp-gen-sync}

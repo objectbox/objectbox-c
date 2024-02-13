@@ -19,7 +19,7 @@
 #include "objectbox-sync.h"
 #include "objectbox.hpp"
 
-static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 20 && OBX_VERSION_PATCH == 0,  // NOLINT
+static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 21 && OBX_VERSION_PATCH == 0,  // NOLINT
               "Versions of objectbox.h and objectbox-sync.hpp files do not match, please update");
 
 namespace obx {
@@ -29,6 +29,8 @@ class SyncCredentials {
     friend SyncServer;
     OBXSyncCredentialsType type_;
     std::vector<uint8_t> data_;
+    std::string username_;
+    std::string password_;
 
 public:
     SyncCredentials(OBXSyncCredentialsType type, std::vector<uint8_t>&& data) : type_(type), data_(std::move(data)) {}
@@ -37,6 +39,9 @@ public:
         static_assert(sizeof(data_[0]) == sizeof(data[0]), "Can't directly copy std::string to std::vector<uint8_t>");
         if (!data.empty()) memcpy(data_.data(), data.data(), data.size() * sizeof(data[0]));
     }
+
+    SyncCredentials(OBXSyncCredentialsType type, const std::string& username, const std::string& password)
+        : type_(type), username_(username), password_(password) {}
 
     static SyncCredentials none() {
         return SyncCredentials(OBXSyncCredentialsType::OBXSyncCredentialsType_NONE, std::vector<uint8_t>{});
@@ -52,6 +57,14 @@ public:
 
     static SyncCredentials googleAuth(const std::string& str) {
         return SyncCredentials(OBXSyncCredentialsType::OBXSyncCredentialsType_GOOGLE_AUTH, str);
+    }
+
+    static SyncCredentials obxAdminUser(const std::string& username, const std::string& password) {
+        return SyncCredentials(OBXSyncCredentialsType::OBXSyncCredentialsType_OBX_ADMIN_USER, username, password);
+    }
+
+    static SyncCredentials userPassword(const std::string& username, const std::string& password) {
+        return SyncCredentials(OBXSyncCredentialsType::OBXSyncCredentialsType_USER_PASSWORD, username, password);
     }
 };
 
@@ -92,6 +105,18 @@ public:
     /// Or in other words, when the client is "up-to-date".
     virtual void updatesCompleted() noexcept = 0;
 };
+
+/// Listens to sync error event on a sync client.
+class SyncClientErrorListener {
+public:
+    virtual ~SyncClientErrorListener() = default;
+
+    /// Called when the client detects a sync error.
+    /// @param error - indicates the error event that occurred.
+    virtual void errorOccurred(OBXSyncError error) noexcept = 0;
+};
+
+/// List
 
 /// Listens to sync time information events on a sync client.
 class SyncClientTimeListener {
@@ -155,7 +180,8 @@ class SyncClientListener : public SyncClientLoginListener,
                            public SyncClientCompletionListener,
                            public SyncClientConnectionListener,
                            public SyncChangeListener,
-                           public SyncClientTimeListener {};
+                           public SyncClientTimeListener,
+                           public SyncClientErrorListener {};
 
 class SyncObjectsMessageListener {
 public:
@@ -230,6 +256,7 @@ class SyncClient : public Closable {
         std::shared_ptr<SyncChangeListener> change;
         std::shared_ptr<SyncClientTimeListener> time;
         std::shared_ptr<SyncClientListener> combined;
+        std::shared_ptr<SyncClientErrorListener> error;
         std::shared_ptr<SyncObjectsMessageListener> object;
     } listeners_;
 
@@ -300,8 +327,17 @@ public:
     /// Configure authentication credentials.
     /// The accepted OBXSyncCredentials type depends on your sync-server configuration.
     void setCredentials(const SyncCredentials& creds) {
-        obx_err err = obx_sync_credentials(cPtr(), creds.type_, creds.data_.empty() ? nullptr : creds.data_.data(),
+        obx_err err;
+        switch (creds.type_) {
+            case OBXSyncCredentialsType_OBX_ADMIN_USER:
+            case OBXSyncCredentialsType_USER_PASSWORD:
+                err = obx_sync_credentials_user_password(cPtr(), creds.type_, creds.username_.c_str(),
+                                                         creds.password_.c_str());
+                break;
+            default:
+                err = obx_sync_credentials(cPtr(), creds.type_, creds.data_.empty() ? nullptr : creds.data_.data(),
                                            creds.data_.size());
+        }
         internal::checkErrOrThrow(err);
     }
 
@@ -500,6 +536,20 @@ public:
         }
     }
 
+    void setErrorListener(std::shared_ptr<SyncClientErrorListener> listener) {
+        Guard lock(listeners_.mutex);
+
+        removeErrorListener();
+
+        if (listener) {
+            listeners_.error = std::move(listener);
+            obx_sync_listener_error(
+                cPtr(),
+                [](void* arg, OBXSyncError error) { static_cast<SyncClientErrorListener*>(arg)->errorOccurred(error); },
+                listeners_.change.get());
+        }
+    }
+
     void setListener(std::shared_ptr<SyncClientListener> listener) {
         Guard lock(listeners_.mutex);
 
@@ -507,6 +557,7 @@ public:
         bool forceRemove = listeners_.combined != nullptr;
         removeLoginListener(forceRemove);
         removeCompletionListener(forceRemove);
+        removeErrorListener(forceRemove);
         removeConnectionListener(forceRemove);
         removeTimeListener(forceRemove);
         removeChangeListener(forceRemove);
@@ -524,6 +575,10 @@ public:
                 listenerPtr);
             obx_sync_listener_complete(
                 cPtr(), [](void* arg) { static_cast<SyncClientListener*>(arg)->updatesCompleted(); }, listenerPtr);
+            obx_sync_listener_error(
+                cPtr(),
+                [](void* arg, OBXSyncError error) { static_cast<SyncClientListener*>(arg)->errorOccurred(error); },
+                listenerPtr);
             obx_sync_listener_connect(
                 cPtr(), [](void* arg) { static_cast<SyncClientListener*>(arg)->connected(); }, listenerPtr);
             obx_sync_listener_disconnect(
@@ -562,6 +617,13 @@ public:
         }
     }
 
+    /// Get u64 value for sync statistics.
+    uint64_t statsValueU64(OBXSyncStats counterType) {
+        uint64_t value;
+        internal::checkErrOrThrow(obx_sync_stats_u64(cPtr(), counterType, &value));
+        return value;
+    }
+
 protected:
     OBX_sync* cPtr() const {
         OBX_sync* ptr = cSync_;
@@ -593,6 +655,14 @@ protected:
         std::shared_ptr<SyncClientCompletionListener> listener = std::move(listeners_.complete);
         if (listener || evenIfEmpty) {
             obx_sync_listener_complete(cPtr(), nullptr, nullptr);
+            listener.reset();
+        }
+    }
+
+    void removeErrorListener(bool evenIfEmpty = false) {
+        std::shared_ptr<SyncClientErrorListener> listener = std::move(listeners_.error);
+        if (listener || evenIfEmpty) {
+            obx_sync_listener_error(cPtr(), nullptr, nullptr);
             listener.reset();
         }
     }
@@ -756,8 +826,21 @@ public:
     /// Sets credentials for the server to accept. Use before start().
     /// @param data may be NULL in combination with OBXSyncCredentialsType_NONE
     void setCredentials(const SyncCredentials& creds) {
+        if (creds.type_ == OBXSyncCredentialsType_OBX_ADMIN_USER ||
+            creds.type_ == OBXSyncCredentialsType_USER_PASSWORD) {
+            throw obx::IllegalArgumentException("Use enableAuthenticationType() instead");
+        }
+        if (!creds.username_.empty() || !creds.password_.empty()) {
+            throw obx::IllegalArgumentException("This function does not support username/password");
+        }
         internal::checkErrOrThrow(obx_sync_server_credentials(
             cPtr(), creds.type_, creds.data_.empty() ? nullptr : creds.data_.data(), creds.data_.size()));
+    }
+
+    /// Sets credentials for the server to accept. Use before start().
+    /// @param data may be NULL in combination with OBXSyncCredentialsType_NONE
+    void enableAuthenticationType(OBXSyncCredentialsType type) {
+        internal::checkErrOrThrow(obx_sync_server_enable_auth(cPtr(), type));
     }
 
     /// Sets the number of worker threads. Calll before start().
@@ -807,6 +890,20 @@ public:
     std::string statsString(bool includeZeroValues = true) {
         const char* serverStatsString = obx_sync_server_stats_string(cPtr(), includeZeroValues);
         return internal::checkedPtrOrThrow(serverStatsString, "Can't get SyncServer stats string");
+    }
+
+    /// Get u64 value for sync server statistics.
+    uint64_t statsValueU64(OBXSyncServerStats counterType) {
+        uint64_t value;
+        internal::checkErrOrThrow(obx_sync_server_stats_u64(cPtr(), counterType, &value));
+        return value;
+    }
+
+    /// Get double value for sync server statistics.
+    double statsValueF64(OBXSyncServerStats counterType) {
+        double value;
+        internal::checkErrOrThrow(obx_sync_server_stats_f64(cPtr(), counterType, &value));
+        return value;
     }
 
     void setChangeListener(std::shared_ptr<SyncChangeListener> listener) {

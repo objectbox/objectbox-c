@@ -36,7 +36,7 @@
 #include <optional>
 #endif
 
-static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 20 && OBX_VERSION_PATCH == 0,  // NOLINT
+static_assert(OBX_VERSION_MAJOR == 0 && OBX_VERSION_MINOR == 21 && OBX_VERSION_PATCH == 0,  // NOLINT
               "Versions of objectbox.h and objectbox.hpp files do not match, please update");
 
 #ifdef __clang__
@@ -349,12 +349,14 @@ public:
     }
 
     /// Set the store directory on the options. The default is "objectbox".
+    /// Use the prefix "memory:" to open an in-memory database, e.g. "memory:myApp" (see docs for details).
     Options& directory(const char* dir) {
         internal::checkErrOrThrow(obx_opt_directory(opt, dir));
         return *this;
     }
 
     /// Set the store directory on the options. The default is "objectbox".
+    /// Use the prefix "memory:" to open an in-memory database, e.g. "memory:myApp" (see docs for details).
     Options& directory(const std::string& dir) { return directory(dir.c_str()); }
 
     /// Gets the option for "directory"; this is either the default, or, the value set by directory().
@@ -715,6 +717,8 @@ public:
     /// @returns non-zero ID for the Store
     uint64_t id() const;
 
+    /// Get Store type
+    /// @return One of ::OBXStoreTypeId
     uint32_t getStoreTypeId() { return obx_store_type_id(cPtr()); }
 
     template <class EntityBinding>

@@ -20,6 +20,7 @@ Basic concepts
 * Objects are "grouped" by their type; e.g. there is a Box (or "Cursor") for each type
 * Objects are addressed using a 64 bit integer ID (`obx_id`)
 * There is no query language; queries are build using a [query builder](\ref OBX_query_builder)
+* Objects are stored on disk by default (ACID), or in-memory ("memory:" directory prefix)
 
 See [docs](https://cpp.objectbox.io) for more information on how to use ObjectBox in C and C++
 

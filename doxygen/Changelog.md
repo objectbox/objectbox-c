@@ -3,6 +3,21 @@
 ObjectBox C and C++ API Changelog
 =================================
 
+0.21.0 (2024-02-13)
+-------------------
+* New Store type: In-Memory DB (official announcement)
+
+### Sync:
+
+* New client/server query statistics API 
+* New server API to enable authenticators
+* Sync server: support for sync permissions, blocks client updates with no write permission
+* Added sync-level login/write permissions for Admin Users DB and Web-UI  
+* New authenticator "ObjectBox Admin" with support for authorization
+* New client API for username/password credentials
+* New client-side error listener API; 
+  initially reports "receive-only" downgrade due to no write permissions.
+
 0.20.0 (2023-12-11)
 -------------------
 * Added OBXFeature_Backup to query for the feature's availability

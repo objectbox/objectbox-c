@@ -1,6 +1,6 @@
 ObjectBox Embedded Database for C and C++
 =========================================
-[ObjectBox](https://objectbox.io) is a superfast C and C++ database for embedded devices (mobile and IoT), desktop and server apps.
+[ObjectBox](https://objectbox.io) is a lightweight yet powerful on-device database for objects and vectors.
 The out-of-the-box [Data Sync](https://objectbox.io/sync/) keeps data in sync across devices and any kind of backend/cloud reliably for occasionally connected devices.
 ObjectBox Data Persistence and Data Sync follows an offline-first approach and can be used on-premise as well as with a cloud setup.
 
@@ -18,7 +18,7 @@ box.put({.text = "Buy milk"});
 
 See [ObjectBox C and C++ docs](https://cpp.objectbox.io/) for API details.
 
-**Latest version: 0.21.0** (2024-02-13).
+**Latest version: 4.0.0** (2024-05-15).
 See [changelog](CHANGELOG.md) for more details.
 
 ## Table of Contents:
@@ -36,6 +36,7 @@ See [changelog](CHANGELOG.md) for more details.
 
 Feature Highlights
 ------------------
+🧠 **First on-device vector database:** easily manage vector data and perform fast vector search\
 🏁 **High performance** on restricted devices, like IoT gateways, micro controllers, ECUs etc.\
 🪂 **Resourceful** with minimal CPU, power and Memory usage for maximum flexibility and sustainability\
 🔗 **Relations:** object links / relationships are built-in\

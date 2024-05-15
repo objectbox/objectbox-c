@@ -3,6 +3,14 @@
 ObjectBox C and C++ API Changelog
 =================================
 
+4.0.0 (2024-05-15)
+-------------------
+* ObjectBox now supports vector search ("vector database") to enable efficient similarity searches.
+  This is particularly useful for AI/ML/RAG applications, e.g. image, audio, or text similarity.
+  Other use cases include semantic search or recommendation engines.
+  See https://docs.objectbox.io/ann-vector-search for details.
+* Adjusting the version number to match the core version (4.0); we will be aligning on major versions from now on.
+
 0.21.0 (2024-02-13)
 -------------------
 * In-memory databases (prefix the directory option with "memory:")

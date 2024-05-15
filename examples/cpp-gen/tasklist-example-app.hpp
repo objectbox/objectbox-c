@@ -105,7 +105,7 @@ public:
                         if (arg == "-a") {
                             list = taskBox.getAll();
                         } else if (arg.empty()) {
-                            list = unfinishedTasksQuery.find();
+                            list = unfinishedTasksQuery.findUniquePtrs();
                         } else {
                             std::cerr << "Unknown ls argument " << arg << std::endl;
                             printHelp();

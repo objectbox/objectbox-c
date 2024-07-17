@@ -176,13 +176,17 @@ int main(int argc, char* args[]) {
     printf("Testing libobjectbox version %s, core version: %s\n", obx_version_string(), obx_version_core_string());
     printf("Result array support: %d\n", obx_has_feature(OBXFeature_ResultArray));
 
+    if (argc >= 2 && strcmp(args[1], "--in-memory-wal") == 0) {
+        printf("Enable in-memory WAL\n");
+        obx_store_type_id_register_default(OBXStoreTypeId_InMemoryWal);
+    } else
 #ifdef OBX_Feature_Lmdb  // If LMDB is unavailable, always register in-memory as default
-    if (argc >= 2 && strcmp(args[1], "--in-memory") == 0)
+        if (argc >= 2 && strcmp(args[1], "--in-memory") == 0)
 #endif
-    {
-        printf("Enable in-memory\n");
-        obx_store_type_id_register_default(OBXStoreTypeId_InMemory);
-    }
+        {
+            printf("Enable in-memory\n");
+            obx_store_type_id_register_default(OBXStoreTypeId_InMemory);
+        }
 
     OBX_store* store = NULL;
     OBX_txn* txn = NULL;

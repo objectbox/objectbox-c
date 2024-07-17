@@ -1,8 +1,12 @@
 ObjectBox C and C++ API Changelog
 =================================
 
+4.0.1 (2024-07-17)
+------------------
+* Query: "visit with score" added, so you can consume vector search results one-by-one with a visitor callback 
+
 4.0.0 (2024-05-15)
--------------------
+------------------
 * ObjectBox now supports vector search ("vector database") to enable efficient similarity searches.
   This is particularly useful for AI/ML/RAG applications, e.g. image, audio, or text similarity.
   Other use cases include semantic search or recommendation engines.

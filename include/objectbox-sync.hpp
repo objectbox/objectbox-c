@@ -19,7 +19,7 @@
 #include "objectbox-sync.h"
 #include "objectbox.hpp"
 
-static_assert(OBX_VERSION_MAJOR == 4 && OBX_VERSION_MINOR == 0 && OBX_VERSION_PATCH == 0,  // NOLINT
+static_assert(OBX_VERSION_MAJOR == 4 && OBX_VERSION_MINOR == 0 && OBX_VERSION_PATCH == 1,  // NOLINT
               "Versions of objectbox.h and objectbox-sync.hpp files do not match, please update");
 
 namespace obx {
@@ -334,6 +334,10 @@ public:
                 err = obx_sync_credentials_user_password(cPtr(), creds.type_, creds.username_.c_str(),
                                                          creds.password_.c_str());
                 break;
+            case OBXSyncCredentialsType_NONE:
+            case OBXSyncCredentialsType_SHARED_SECRET:
+            case OBXSyncCredentialsType_SHARED_SECRET_SIPPED:
+            case OBXSyncCredentialsType_GOOGLE_AUTH:
             default:
                 err = obx_sync_credentials(cPtr(), creds.type_, creds.data_.empty() ? nullptr : creds.data_.data(),
                                            creds.data_.size());

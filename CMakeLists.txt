@@ -84,8 +84,44 @@ else ()
     endif ()
 endif ()
 
+# Make ObjectBoxGenerator Find CMake Module available.
+
+# Set version for ObjectBoxGenerator find module.
+set(FindObjectBoxGenerator_VERSION 4.0.0-alpha0)
+set(DL_URL https://raw.githubusercontent.com/objectbox/objectbox-generator/v${FindObjectBoxGenerator_VERSION}/cmake/FindObjectBoxGenerator.cmake)
+
+if(${CMAKE_VERSION} VERSION_GREATER_EQUAL 3.18)
+    message(STATUS "Fetch FindObjectBoxGenerator.cmake via FetchContent")
+    include(FetchContent)
+    FetchContent_Declare(FindObjectBoxGenerator URL ${DL_URL} DOWNLOAD_NO_EXTRACT TRUE)
+    FetchContent_MakeAvailable(FindObjectBoxGenerator)
+    set(MODULES_DIR ${findobjectboxgenerator_SOURCE_DIR})
+else()
+    message(STATUS "Fetch FindObjectBoxGenerator.cmake via file(DOWNLOAD ..)")
+    set(MODULES_DIR ${CMAKE_CURRENT_LIST_DIR}/cmake)
+    file(MAKE_DIRECTORY ${MODULES_DIR})
+    if (NOT EXISTS ${MODULES_DIR}/FindObjectBoxGenerator.cmake)
+        file(DOWNLOAD ${DL_URL} ${MODULES_DIR}/FindObjectBoxGenerator.cmake 
+            TLS_VERIFY ON
+            STATUS DL_STATUS
+        )
+        if (NOT DL_STATUS EQUAL 0)
+            message(WARNING "Downloading FindObjectBoxGenerator.cmake from URL ${DL_URL} failed")
+        endif()
+    endif()
+endif()
+
+if (EXISTS ${MODULES_DIR}/FindObjectBoxGenerator.cmake)
+  # Enable find_package to locate ObjectBoxGenerator find module.
+  list(APPEND CMAKE_MODULE_PATH ${MODULES_DIR})
+  get_directory_property(hasParent PARENT_DIRECTORY)
+  if(hasParent)
+    set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} PARENT_SCOPE)
+  endif()
+endif()
+
 # By default we exclude tests and examples.
 # If you want to build them please "make" them explicitly by target name (see targets below)
 add_subdirectory(src-test EXCLUDE_FROM_ALL)     # target:  objectbox-c-test
 add_subdirectory(src-test-gen EXCLUDE_FROM_ALL) # target:  objectbox-c-gen-test
-add_subdirectory(examples EXCLUDE_FROM_ALL)     # targets: objectbox-c-examples-tasks-{c,cpp-gen,cpp-gen-sync}
+add_subdirectory(examples EXCLUDE_FROM_ALL)     # targets: objectbox-c-examples-tasks-{c,cpp-{auto}gen,cpp-gen-sync}

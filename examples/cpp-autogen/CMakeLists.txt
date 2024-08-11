@@ -5,10 +5,6 @@ add_executable(${PROJECT_NAME}
         main.cpp
         )
 
-# Find Package is available at https://github.com/objectbox/objectbox-generator under cmake folder
-# In this example it is automatically downloaded via top-level CMakeLists.txt using FetchContent
-find_package(ObjectBoxGenerator 0.15.0 REQUIRED)
-
 # add_obx_schema provided by ObjectBoxGenerator package.
 add_obx_schema(TARGET ${PROJECT_NAME} SCHEMA_FILES tasklist.fbs INSOURCE)
 

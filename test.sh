@@ -33,25 +33,8 @@ export LD_LIBRARY_PATH=
 echo "Building into \"${buildDir}\"..."
 mkdir -p ${buildDir}
 cd ${buildDir}
-# Skip configure autogen tests for Linux other than x86_64:
-if [ `uname` == "Linux" ] && [ `uname -m` != 'x86_64' ]; then
-  EXTRA_CMAKE_ARGS=-DOBX_EXAMPLES_DISABLE_AUTOGEN=ON
-fi
-cmake ${EXTRA_CMAKE_ARGS:-} ..
-
-# Visual Studio CMake generators don't know targets at top-level, so change to sub-directories here. 
-# Others can use 'cmake --build <top-build-dir> --target <name>' directly.
-(cd src-test && cmake --build . --target objectbox-c-test)
-(cd src-test-gen && cmake --build . --target objectbox-c-gen-test)
-(cd examples/c-gen && cmake --build . --target objectbox-c-examples-tasks-c-gen)
-(cd examples/cpp-gen && cmake --build . --target objectbox-c-examples-tasks-cpp-gen)
-(cd examples/cpp-gen-sync && cmake --build . --target objectbox-c-examples-tasks-cpp-gen-sync)
-# Skip cpp-autogen test for Linux other than x86_64:
-if [ `uname` == "Linux" ] && [ `uname -m` != 'x86_64' ]; then
-  echo "Skip cpp-autogen until ObjectBox-Generator available others (mainly ARM64)"
-else
-  (cd examples/cpp-autogen && cmake --build . --target objectbox-c-examples-tasks-cpp-autogen)
-fi
+cmake ..
+cmake --build .
 
 (cd src-test/${buildSubDir} && ${testPrepCmd} && ./objectbox-c-test)
 (cd src-test-gen/${buildSubDir} && ${testPrepCmd} && ./objectbox-c-gen-test)

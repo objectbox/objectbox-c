@@ -5,6 +5,11 @@ cmake_minimum_required(VERSION 3.5)
 # * Define the ObjectBox library target (target name "objectbox"; or, if the sync variant is used, "objectbox-sync")
 # * Fetch (download) the ObjectBoxGenerator CMake
 # * Unless this CMake is consumed from a user project, add the sub-projects (tests and examples)
+#
+# Options are available via variables that can be declared before fetching this CMake module:
+# * ObjectBoxGenerator_CMAKE_DISABLE: set to ON to skip CMake integration of ObjectBox Generator
+# * ObjectBoxGenerator_CMAKE_VERSION: override the default version of the ObjectBox Generator CMake.
+#                                     Changes the version to be fetched (git tag or branch).
 
 project(ObjectBoxCRoot)
 
@@ -93,22 +98,22 @@ endif ()
 # ------------------------
 # Make "FindObjectBoxGenerator" available, which is used to download/find and run the ObjectBox Generator.
 
-set(OBX_FindObjectBoxGenerator_DISABLE OFF CACHE BOOL "Allows to disable the CMake integration of ObjectBox Generator")
-if (OBX_FindObjectBoxGenerator_DISABLE)
+if (ObjectBoxGenerator_CMAKE_DISABLE)
     message(STATUS "ObjectBox Generator CMake integration disabled")
 else ()
-    set(OBX_FindObjectBoxGenerator_VERSION "v4.0.0-alpha2" CACHE STRING
-            "The version of the ObjectBox Generator CMake to be fetched (git tag or branch).")
-    set(OBX_GEN_DL_URL https://raw.githubusercontent.com/objectbox/objectbox-generator/${OBX_FindObjectBoxGenerator_VERSION}/cmake/FindObjectBoxGenerator.cmake)
+    if(NOT DEFINED ObjectBoxGenerator_CMAKE_VERSION OR ObjectBoxGenerator_CMAKE_VERSION STREQUAL "")
+        set(ObjectBoxGenerator_CMAKE_VERSION "v4.0.0-alpha2") # The default version
+    endif ()
+    set(OBX_GEN_DL_URL https://raw.githubusercontent.com/objectbox/objectbox-generator/${ObjectBoxGenerator_CMAKE_VERSION}/cmake/FindObjectBoxGenerator.cmake)
 
     if (${CMAKE_VERSION} VERSION_GREATER_EQUAL 3.18)
-        message(STATUS "Fetch ObjectBoxGenerator CMake version ${OBX_FindObjectBoxGenerator_VERSION}")
+        message(STATUS "Fetch ObjectBox Generator CMake version ${ObjectBoxGenerator_CMAKE_VERSION}")
         include(FetchContent)
         FetchContent_Declare(FindObjectBoxGenerator URL ${OBX_GEN_DL_URL} DOWNLOAD_NO_EXTRACT TRUE)
         FetchContent_MakeAvailable(FindObjectBoxGenerator)
         set(OBX_GEN_MODULE_DIR ${findobjectboxgenerator_SOURCE_DIR})
     else ()
-        message(STATUS "Fetch ObjectBoxGenerator CMake version ${OBX_FindObjectBoxGenerator_VERSION} (using old CMake version)")
+        message(STATUS "Fetch ObjectBox Generator CMake version ${ObjectBoxGenerator_CMAKE_VERSION} (using old CMake version)")
         set(OBX_GEN_MODULE_DIR ${CMAKE_CURRENT_LIST_DIR}/cmake)
         file(MAKE_DIRECTORY ${OBX_GEN_MODULE_DIR})
         if (NOT EXISTS ${OBX_GEN_MODULE_DIR}/FindObjectBoxGenerator.cmake)

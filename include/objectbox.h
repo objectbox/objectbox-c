@@ -86,6 +86,8 @@ typedef int obx_err;
 /// @return The visitor returns true to keep going or false to cancel.
 typedef bool obx_data_visitor(const void* data, size_t size, void* user_data);
 
+struct OBX_bytes_score;  // Forward declaration for the obx_data_score_visitor typedef
+
 /// The callback for reading data (i.e. object bytes) with a search score one-by-one.
 /// @param data contains the current data with score element
 /// @param user_data is a pass-through argument passed to the called API

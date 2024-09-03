@@ -94,15 +94,17 @@ else ()
     endif ()
 endif ()
 
-# ObjectBoxGenerator CMake
-# ------------------------
+# ObjectBoxGenerator CMake Downloader
+# -----------------------------------
 # Make "FindObjectBoxGenerator" available, which is used to download/find and run the ObjectBox Generator.
 
 if (ObjectBoxGenerator_CMAKE_DISABLE)
     message(STATUS "ObjectBox Generator: CMake integration disabled")
 else ()
     if(NOT DEFINED ObjectBoxGenerator_CMAKE_VERSION OR ObjectBoxGenerator_CMAKE_VERSION STREQUAL "")
-        set(ObjectBoxGenerator_CMAKE_VERSION "v4.0.0-alpha2") # Default version
+        # The default version is a specific version that "matches" the ObjectBox library version of this repo.
+        # Nevertheless, it's often possible to use a newer Generator version as breaking changes are infrequent.
+        set(ObjectBoxGenerator_CMAKE_VERSION "v4.0.0-beta")
     endif ()
     set(OBX_GEN_DL_URL https://raw.githubusercontent.com/objectbox/objectbox-generator/${ObjectBoxGenerator_CMAKE_VERSION}/cmake/FindObjectBoxGenerator.cmake)
 

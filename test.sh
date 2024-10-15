@@ -34,14 +34,7 @@ echo "Building into \"${buildDir}\"..."
 mkdir -p ${buildDir}
 cd ${buildDir}
 cmake ..
-
-# Visual Studio CMake generators don't know targets at top-level, so change to sub-directories here. 
-# Others can use 'cmake --build <top-build-dir> --target <name>' directly.
-(cd src-test && cmake --build . --target objectbox-c-test)
-(cd src-test-gen && cmake --build . --target objectbox-c-gen-test)
-(cd examples/c-gen && cmake --build . --target objectbox-c-examples-tasks-c-gen)
-(cd examples/cpp-gen && cmake --build . --target objectbox-c-examples-tasks-cpp-gen)
-(cd examples/cpp-gen-sync && cmake --build . --target objectbox-c-examples-tasks-cpp-gen-sync)
+cmake --build .
 
 (cd src-test/${buildSubDir} && ${testPrepCmd} && ./objectbox-c-test)
 (cd src-test-gen/${buildSubDir} && ${testPrepCmd} && ./objectbox-c-gen-test)

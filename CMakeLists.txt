@@ -1,14 +1,24 @@
-cmake_minimum_required(VERSION 3.5) 
+cmake_minimum_required(VERSION 3.5)
 # 3.5: Since CMake 3.27 VERSION < 3.5 produce a deprecation warning.
 
-project(ObjectBoxCRoot) # to be displayed in an IDE when this CMake is opened
+# This CMake file has the following purposes:
+# * Define the ObjectBox library target (target name "objectbox"; or, if the sync variant is used, "objectbox-sync")
+# * Fetch (download) the ObjectBoxGenerator CMake
+# * Unless this CMake is consumed from a user project, add the sub-projects (tests and examples)
+#
+# Options are available via plain (not cached) variables that can be declared before fetching this CMake module:
+# * ObjectBoxGenerator_CMAKE_DISABLE: set to ON to skip CMake integration of ObjectBox Generator
+# * ObjectBoxGenerator_CMAKE_VERSION: override the default version of the ObjectBox Generator CMake.
+#                                     Changes the version to be fetched (git tag or branch).
+
+project(ObjectBoxCRoot)
 
 # Remove Warning (as of CMake >= 3.24): 
 # "The DOWNLOAD_EXTRACT_TIMESTAMP option was not given.." 
 # We use the new behaviour (file timestamps from downloaded/extracted archives are updated).
-if(POLICY CMP0135)
+if (POLICY CMP0135)
     cmake_policy(SET CMP0135 NEW)
-endif()
+endif ()
 
 if (${CMAKE_VERSION} VERSION_LESS "3.11.0")
     message("Please consider upgrading your CMake to a more recent version (v3.11+) to get automatic library download.")
@@ -39,7 +49,7 @@ else ()
 
     function(defineObjectBoxLib VARIANT)
         # Configuration updated for each release
-        set(DL_VERSION 4.0.1)
+        set(DL_VERSION 4.0.2)
 
         # Platform detection and other setup
         set(DL_URL https://github.com/objectbox/objectbox-c/releases/download)
@@ -84,8 +94,56 @@ else ()
     endif ()
 endif ()
 
-# By default we exclude tests and examples.
-# If you want to build them please "make" them explicitly by target name (see targets below)
-add_subdirectory(src-test EXCLUDE_FROM_ALL)     # target:  objectbox-c-test
-add_subdirectory(src-test-gen EXCLUDE_FROM_ALL) # target:  objectbox-c-gen-test
-add_subdirectory(examples EXCLUDE_FROM_ALL)     # targets: objectbox-c-examples-tasks-{c,cpp-gen,cpp-gen-sync}
+# ObjectBoxGenerator CMake Downloader
+# -----------------------------------
+# Make "FindObjectBoxGenerator" available, which is used to download/find and run the ObjectBox Generator.
+
+if (ObjectBoxGenerator_CMAKE_DISABLE)
+    message(STATUS "ObjectBox Generator: CMake integration disabled")
+else ()
+    if(NOT DEFINED ObjectBoxGenerator_CMAKE_VERSION OR ObjectBoxGenerator_CMAKE_VERSION STREQUAL "")
+        # The default version is a specific version that "matches" the ObjectBox library version of this repo.
+        # Nevertheless, it's often possible to use a newer Generator version as breaking changes are infrequent.
+        set(ObjectBoxGenerator_CMAKE_VERSION "v4.0.0-beta")
+    endif ()
+    set(OBX_GEN_DL_URL https://raw.githubusercontent.com/objectbox/objectbox-generator/${ObjectBoxGenerator_CMAKE_VERSION}/cmake/FindObjectBoxGenerator.cmake)
+
+    if (${CMAKE_VERSION} VERSION_GREATER_EQUAL 3.18)
+        message(STATUS "ObjectBox Generator: fetching version \"${ObjectBoxGenerator_CMAKE_VERSION}\"")
+        include(FetchContent)
+        FetchContent_Declare(FindObjectBoxGenerator URL ${OBX_GEN_DL_URL} DOWNLOAD_NO_EXTRACT TRUE)
+        FetchContent_MakeAvailable(FindObjectBoxGenerator)
+        set(OBX_GEN_MODULE_DIR ${findobjectboxgenerator_SOURCE_DIR})
+    else ()
+        message(STATUS "ObjectBox Generator: fetching version \"${ObjectBoxGenerator_CMAKE_VERSION}\" (using old CMake version)")
+        set(OBX_GEN_MODULE_DIR ${CMAKE_CURRENT_LIST_DIR}/cmake)
+        file(MAKE_DIRECTORY ${OBX_GEN_MODULE_DIR})
+        if (NOT EXISTS ${OBX_GEN_MODULE_DIR}/FindObjectBoxGenerator.cmake)
+            file(DOWNLOAD ${OBX_GEN_DL_URL} ${OBX_GEN_MODULE_DIR}/FindObjectBoxGenerator.cmake
+                    TLS_VERIFY ON
+                    STATUS DL_STATUS
+            )
+            if (NOT DL_STATUS EQUAL 0)
+                message(WARNING "Downloading FindObjectBoxGenerator.cmake from URL ${DL_URL} failed")
+            endif ()
+        endif ()
+    endif ()
+
+    if (EXISTS ${OBX_GEN_MODULE_DIR}/FindObjectBoxGenerator.cmake)
+        # Enable find_package to locate ObjectBoxGenerator find module.
+        list(APPEND CMAKE_MODULE_PATH ${OBX_GEN_MODULE_DIR})
+        get_directory_property(hasParent PARENT_DIRECTORY)
+        if (hasParent)
+            set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} PARENT_SCOPE)
+        endif ()
+    endif ()
+endif ()
+
+
+# If this project is top-level, include public tests and examples.
+# Otherwise, this CMake file is used from a user project, so we do not want to expose these.
+if (CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
+    add_subdirectory(src-test)     # target:  objectbox-c-test
+    add_subdirectory(src-test-gen) # target:  objectbox-c-gen-test
+    add_subdirectory(examples)     # targets: objectbox-c-examples-tasks-{c,cpp-{auto}gen,cpp-gen-sync}
+endif ()

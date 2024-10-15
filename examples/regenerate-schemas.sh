@@ -25,10 +25,15 @@ ${obxgen} -version
 
 (
   cd cpp-gen
-  ${obxgen} -cpp tasklist.fbs
+  ${obxgen} -cpp11 tasklist.fbs
 )
 
 (
   cd cpp-gen-sync
-  ${obxgen} -cpp tasklist.fbs
+  ${obxgen} -cpp11 tasklist.fbs
+)
+
+(
+  cd vectorsearch-cities
+  ${obxgen} -cpp city.fbs
 )

@@ -1,6 +1,22 @@
 ObjectBox C and C++ API Changelog
 =================================
 
+4.0.2 (2024-10-15)
+------------------
+* Made closing the store more robust; e.g. it waits for ongoing queries and transactions to finish
+  (please still ensure to clean up properly on your side, this is an additional safety net)
+* Made Box API more robust when racing against store closing
+* Improved C++ APIs for nearest neighbor search (query building etc.)
+* Some minor HNSW performance improvements
+* Add "vectorsearch-cities" example
+
+### Sync
+
+* Fixed a serious regression; please update to the latest version asap!
+* Added a special compression for tiny transactions
+* Embedded clusters (note: the cluster feature may not come with all editions of the library)
+* Add FlatBuffers based configuration for Sync Server
+
 4.0.1 (2024-07-17)
 ------------------
 * Query: "visit with score" added, so you can consume vector search results one-by-one with a visitor callback 

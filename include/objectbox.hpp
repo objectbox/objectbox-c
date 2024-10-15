@@ -36,7 +36,7 @@
 #include <optional>
 #endif
 
-static_assert(OBX_VERSION_MAJOR == 4 && OBX_VERSION_MINOR == 0 && OBX_VERSION_PATCH == 1,  // NOLINT
+static_assert(OBX_VERSION_MAJOR == 4 && OBX_VERSION_MINOR == 0 && OBX_VERSION_PATCH == 2,  // NOLINT
               "Versions of objectbox.h and objectbox.hpp files do not match, please update");
 
 #ifdef __clang__
@@ -120,6 +120,15 @@ public:
 
     /// The error code as defined in objectbox.h via the OBX_ERROR_* constants
     int code() const override { return code_; }
+};
+
+/// A functionality was invoked that is not part in this edition of ObjectBox.
+class FeatureNotAvailableException : public Exception {
+public:
+    using Exception::Exception;
+
+    /// Always OBX_ERROR_FEATURE_NOT_AVAILABLE
+    int code() const override { return OBX_ERROR_FEATURE_NOT_AVAILABLE; }
 };
 
 namespace internal {
@@ -210,6 +219,8 @@ void appendLastErrorText(obx_err err, std::string& outMessage) {
             throw ShuttingDownException(message);
         } else if (err == OBX_ERROR_MAX_DATA_SIZE_EXCEEDED) {
             throw MaxDataSizeExceededException(message);
+        } else if (err == OBX_ERROR_FEATURE_NOT_AVAILABLE) {
+            throw FeatureNotAvailableException(message);
         } else {
             throw DbException(message, err);
         }
@@ -1274,7 +1285,8 @@ enum class QueryOp {
     In,
     NotIn,
     Null,
-    NotNull
+    NotNull,
+    NearestNeighbors
 };
 
 // Internal base class for all the condition containers. Each container starts with `QC` and ends with the type of the
@@ -1505,6 +1517,33 @@ protected:
             return obx_qb_greater_than_bytes(cqb, propId_, value_.data(), value_.size());
         } else if (op_ == QueryOp::GreaterOrEq) {
             return obx_qb_greater_or_equal_bytes(cqb, propId_, value_.data(), value_.size());
+        }
+        throwInvalidOperation();
+    }
+};
+
+class QCVectorF32 : public QC {
+    const std::vector<float> value_;
+    const float* valuePtr_ = nullptr;
+    const size_t maxResultCount_ = 0;
+
+public:
+    /// @param value the vector with an element count that matches the dimension given for the property.
+    QCVectorF32(obx_schema_id propId, QueryOp op, std::vector<float>&& value, size_t maxResultCount)
+        : QC(propId, op), value_(std::move(value)), maxResultCount_(maxResultCount) {}
+
+    /// Does not copy the value; uses the reference
+    /// @param value the vector with an element count that matches the dimension given for the property.
+    QCVectorF32(obx_schema_id propId, QueryOp op, const float* value, size_t maxResultCount)
+        : QC(propId, op), valuePtr_(value), maxResultCount_(maxResultCount) {}
+
+protected:
+    std::unique_ptr<QueryCondition> copyAsPtr() const override { return QueryCondition::copyAsPtr(*this); };
+
+    obx_qb_cond applyTo(OBX_query_builder* cqb, bool /*isRoot*/) const override {
+        if (op_ == QueryOp::NearestNeighbors) {
+            const float* data = valuePtr_ ? valuePtr_ : value_.data();
+            return obx_qb_nearest_neighbors_f32(cqb, propId_, data, maxResultCount_);
         }
         throwInvalidOperation();
     }
@@ -1810,6 +1849,33 @@ public:
     }
 };
 
+/// Carries property information when used in the entity-meta ("underscore") class
+template <typename EntityT>
+class Property<EntityT, OBXPropertyType_FloatVector> : public PropertyTypeless {
+public:
+    explicit constexpr Property(obx_schema_id id) noexcept : PropertyTypeless(id) {}
+
+    /// @param value the vector with an element count that matches the dimension given for the property.
+    /// @param maxNeighborCount Maximal number of nearest neighbors to search for.
+    QCVectorF32 nearestNeighbors(std::vector<float>&& value, size_t maxNeighborCount) const {
+        return {this->id_, QueryOp::NearestNeighbors, std::move(value), maxNeighborCount};
+    }
+
+    /// Note: The vector data is NOT copied but referenced, so keep it until the Query is built.
+    /// @param value the vector with an element count that matches the dimension given for the property.
+    /// @param maxNeighborCount Maximal number of nearest neighbors to search for.
+    QCVectorF32 nearestNeighbors(const std::vector<float>& value, size_t maxNeighborCount) const {
+        return {this->id_, QueryOp::NearestNeighbors, value.data(), maxNeighborCount};
+    }
+
+    /// Note: The vector data is NOT copied but referenced, so keep it until the Query is built.
+    /// @param value the vector with an element count that matches the dimension given for the property.
+    /// @param maxNeighborCount Maximal number of nearest neighbors to search for.
+    QCVectorF32 nearestNeighbors(const float* value, size_t maxNeighborCount) const {
+        return {this->id_, QueryOp::NearestNeighbors, value, maxNeighborCount};
+    }
+};
+
 /// Carries property-based to-one relation information when used in the entity-meta ("underscore") class
 template <typename SourceEntityT, typename TargetEntityT>  // NOLINT TargetEntityT may be used in the future
 class RelationProperty : public Property<SourceEntityT, OBXPropertyType_Relation> {
@@ -2074,6 +2140,13 @@ public:
     QueryBuilder& nearestNeighborsFloat32(Property<EntityT, OBXPropertyType_FloatVector> vectorProperty,
                                           const float* queryVector, size_t maxResultCount) {
         QueryBuilderBase::nearestNeighborsFloat32(vectorProperty.id(), queryVector, maxResultCount);
+        return *this;
+    }
+
+    /// Overload for a std::vector; for details see the pointer-based nearestNeighborsFloat32().
+    QueryBuilder& nearestNeighborsFloat32(Property<EntityT, OBXPropertyType_FloatVector> vectorProperty,
+                                          const std::vector<float>& queryVector, size_t maxResultCount) {
+        QueryBuilderBase::nearestNeighborsFloat32(vectorProperty.id(), queryVector.data(), maxResultCount);
         return *this;
     }
 
@@ -2428,6 +2501,15 @@ public:
     Query& setParameter(Property<PropertyEntityT, OBXPropertyType_FloatVector> property,
                         const std::vector<float>& vector) {
         setParameter(property, vector.data(), vector.size());
+        return *this;
+    }
+
+    /// Only for HNSW-enabled properties that are used for a nearest neighbor search:
+    /// sets the maximum of neighbors to search for.
+    template <typename PropertyEntityT>
+    Query& setParameterMaxNeighbors(Property<PropertyEntityT, OBXPropertyType_FloatVector> property,
+                                    int64_t maxNeighborCount) {
+        QueryBase::setParameter(entityId<PropertyEntityT>(), property.id(), maxNeighborCount);
         return *this;
     }
 

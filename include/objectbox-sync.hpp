@@ -19,7 +19,7 @@
 #include "objectbox-sync.h"
 #include "objectbox.hpp"
 
-static_assert(OBX_VERSION_MAJOR == 4 && OBX_VERSION_MINOR == 0 && OBX_VERSION_PATCH == 1,  // NOLINT
+static_assert(OBX_VERSION_MAJOR == 4 && OBX_VERSION_MINOR == 0 && OBX_VERSION_PATCH == 2,  // NOLINT
               "Versions of objectbox.h and objectbox-sync.hpp files do not match, please update");
 
 namespace obx {
@@ -747,6 +747,18 @@ class SyncServer : public Closable {
 
     using Guard = std::lock_guard<std::mutex>;
 
+    explicit SyncServer(OBX_sync_server* cSyncServer) : cPtr_(cSyncServer) {
+        internal::checkPtrOrThrow(cPtr_, "Could not create SyncServer");
+        try {
+            OBX_store* cStore = obx_sync_server_store(cPtr_);
+            internal::checkPtrOrThrow(cStore, "Could not get SyncServer's store");
+            store_.reset(new Store(cStore, false));
+        } catch (...) {
+            close();
+            throw;
+        }
+    }
+
 public:
     static bool isAvailable() { return obx_has_feature(OBXFeature_SyncServer); }
 
@@ -770,21 +782,19 @@ public:
     ///        was started. \b Examples: "ws://0.0.0.0:9999" could be used during development (no certificate config
     ///        needed), while in a production system, you may want to use wss and a specific IP for security reasons.
     explicit SyncServer(Options& storeOptions, const std::string& url)
-        : cPtr_(obx_sync_server(storeOptions.release(), url.c_str())) {
-        internal::checkPtrOrThrow(cPtr_, "Could not create SyncServer");
-        try {
-            OBX_store* cStore = obx_sync_server_store(cPtr_);
-            internal::checkPtrOrThrow(cStore, "Could not get SyncServer's store");
-            store_.reset(new Store(cStore, false));
-        } catch (...) {
-            close();
-            throw;
-        }
-    }
+        : SyncServer(obx_sync_server(storeOptions.release(), url.c_str())) {}
 
     /// Rvalue variant of SyncServer(Options& storeOptions, const std::string& url) that works equivalently.
     explicit SyncServer(Options&& storeOptions, const std::string& url)
         : SyncServer(static_cast<Options&>(storeOptions), url) {}
+
+    explicit SyncServer(Options& storeOptions, const void* flatOptions, size_t flatOptionsSize)
+        : SyncServer(obx_sync_server_from_flat_options(storeOptions.release(), flatOptions, flatOptionsSize)) {}
+
+    /// Rvalue variant of SyncServer(Options& storeOptions, const void* flatOptions, size_t flatOptionsSize)
+    /// that works equivalently.
+    explicit SyncServer(Options&& storeOptions, const void* flatOptions, size_t flatOptionsSize)
+        : SyncServer(static_cast<Options&>(storeOptions), flatOptions, flatOptionsSize) {}
 
     SyncServer(SyncServer&& source) noexcept : cPtr_(source.cPtr_) {
         source.cPtr_ = nullptr;

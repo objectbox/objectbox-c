@@ -11,10 +11,10 @@ void Task::_OBX_MetaInfo::toFlatBuffer(flatbuffers::FlatBufferBuilder& fbb, cons
     fbb.Clear();
     auto offsettext = fbb.CreateString(object.text);
     flatbuffers::uoffset_t fbStart = fbb.StartTable();
-    fbb.TrackField(4, fbb.PushElement<obx_id>(object.id));
+    fbb.AddElement(4, object.id);
     fbb.AddOffset(6, offsettext);
-    fbb.TrackField(10, fbb.PushElement<int64_t>(object.date_created));
-    fbb.TrackField(12, fbb.PushElement<int64_t>(object.date_finished));
+    fbb.AddElement(10, object.date_created);
+    fbb.AddElement(12, object.date_finished);
     flatbuffers::Offset<flatbuffers::Table> offset;
     offset.o = fbb.EndTable(fbStart);
     fbb.Finish(offset);
@@ -38,10 +38,13 @@ void Task::_OBX_MetaInfo::fromFlatBuffer(const void* data, size_t, Task& outObje
     outObject.id = table->GetField<obx_id>(4, 0);
     {
         auto* ptr = table->GetPointer<const flatbuffers::String*>(6);
-        if (ptr) outObject.text.assign(ptr->c_str());
+        if (ptr) {
+            outObject.text.assign(ptr->c_str(), ptr->size());
+        } else {
+            outObject.text.clear();
+        }
     }
     outObject.date_created = table->GetField<int64_t>(10, 0);
     outObject.date_finished = table->GetField<int64_t>(12, 0);
-    
 }
 

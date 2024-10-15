@@ -1,0 +1,7 @@
+table City {
+    id: ulong;
+    name: string;
+    /// objectbox: index=hnsw, hnsw-dimensions=2
+    /// objectbox: hnsw-distance-type=Euclidean
+    location: [float];
+}

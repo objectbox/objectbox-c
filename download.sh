@@ -44,7 +44,7 @@ tty -s || quiet=true
 
 # Note: optional arguments like "--quiet" shifts argument positions in the case block above
 
-version=${1:-4.0.2}
+version=${1:-4.0.3}
 os=${2:-$(uname)}
 arch=${3:-$(uname -m)}
 echo "Base config: OS ${os} and architecture ${arch}"

@@ -36,7 +36,7 @@
 #include <optional>
 #endif
 
-static_assert(OBX_VERSION_MAJOR == 4 && OBX_VERSION_MINOR == 0 && OBX_VERSION_PATCH == 2,  // NOLINT
+static_assert(OBX_VERSION_MAJOR == 4 && OBX_VERSION_MINOR == 0 && OBX_VERSION_PATCH == 3,  // NOLINT
               "Versions of objectbox.h and objectbox.hpp files do not match, please update");
 
 #ifdef __clang__

@@ -18,7 +18,7 @@ box.put({.text = "Buy milk"});
 
 See [ObjectBox C and C++ docs](https://cpp.objectbox.io/) for API details.
 
-**Latest version: 4.0.2** (2024-10-15).
+**Latest version: 4.0.3** (2024-11-04).
 See [changelog](CHANGELOG.md) for more details.
 
 ## Table of Contents:
@@ -27,8 +27,8 @@ See [changelog](CHANGELOG.md) for more details.
 - [C++ API](#c-api)
 - [Examples](#examples)
 - [Documentation](#documentation)
-- [Current state / Changelog](#current-state--changelog)
-  - [Supported platforms](#supported-platforms)
+- [Current state / Changelog](#changelogupdating)
+- [Supported platforms](#supported-platforms)
 - [C API as the Foundation for Higher Languages](#c-api-as-the-foundation-for-higher-languages)
 - [Other languages/bindings](#other-languagesbindings)
 - [How can I help ObjectBox?](#how-can-i-help-objectbox)
@@ -99,24 +99,25 @@ Documentation
 * [include/objectbox.hpp](include/objectbox.hpp) - C++ API header file contains docs as code comments
 * [C and C++ API reference docs](https://objectbox.io/docfiles/c/current/) - online HTML docs (Doxygen)
 
-Current state / Changelog
--------------------------
-The C API is a thin wrapper around a robust DB core, which is version 3.x and already used on millions of devices.
+Changelog/Updating
+------------------
+Please refer to the **[Changelog](CHANGELOG.md)** for the latest updates and changes.
+We are (mostly) following [Semantic Versioning](https://semver.org/).
 
-**Beta notice:** the C API will become stable starting from version 1.0.
-Until then, API improvements may result in breaking changes. For example, functions may still be renamed.
+If you update from a previous version, please also check the changelog.
 
-**[Changelog](CHANGELOG.md):** If you update from a previous version, please check the [changelog](CHANGELOG.md).
-Besides new features, there may be breaking changes requiring modifications to your code.
-
-### Supported platforms:
+Supported platforms
+-------------------
 * Linux 64-bit
 * Linux ARMv6hf (e.g. Raspberry PI Zero)
 * Linux ARMv7hf (e.g. Raspberry PI 3/4)
-* Linux ARMv8/AArch64 (e.g. Raspberry PI 3/4 with a 64 bit OS like Ubuntu)
-* MacOS 64-bit
+* Linux ARMv8/AArch64 (e.g. Raspberry PI 3/4 with a 64-bit OS like Ubuntu)
+* macOS 64-bit
 * Windows 32-bit
 * Windows 64-bit
+
+Note that e.g. our Android SDK (part of [another repo](https://github.com/objectbox/objectbox-java))
+also exposes the C API, so you can use ObjectBox in your Android NDK projects.
 
 C API as the Foundation for Higher Languages
 --------------------------------------------

@@ -1,6 +1,10 @@
 ObjectBox C and C++ API Changelog
 =================================
 
+4.0.3 (2024-11-05)
+------------------
+* CMake Integration with ObjectBox Generator 4.0.0 
+
 4.0.2 (2024-10-15)
 ------------------
 * Made closing the store more robust; e.g. it waits for ongoing queries and transactions to finish

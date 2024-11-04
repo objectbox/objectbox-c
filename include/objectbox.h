@@ -53,7 +53,7 @@ extern "C" {
 /// obx_version() or obx_version_is_at_least().
 #define OBX_VERSION_MAJOR 4
 #define OBX_VERSION_MINOR 0
-#define OBX_VERSION_PATCH 2  // values >= 100 are reserved for dev releases leading to the next minor/major increase
+#define OBX_VERSION_PATCH 3  // values >= 100 are reserved for dev releases leading to the next minor/major increase
 
 //----------------------------------------------
 // Common types

@@ -1,7 +1,7 @@
 ObjectBox C and C++ API Changelog
 =================================
 
-4.0.3 (2024-11-05)
+4.0.3 (2024-11-11)
 ------------------
 * CMake Integration with ObjectBox Generator 4.0.0 
 

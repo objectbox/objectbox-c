@@ -30,7 +30,7 @@ static inline OBX_model* create_obx_model() {
     obx_model_property(model, "location", OBXPropertyType_FloatVector, 3, 6028438376669885699);
     obx_model_property_flags(model, OBXPropertyFlags_INDEXED);
     obx_model_property_index_hnsw_dimensions(model, 2);
-    obx_model_property_index_hnsw_distance_type(model, OBXVectorDistanceType_Euclidean);
+    obx_model_property_index_hnsw_distance_type(model, OBXVectorDistanceType_Geo);
     obx_model_property_index_id(model, 1, 4616869581890712534);
     obx_model_entity_last_property_id(model, 3, 6028438376669885699);
     

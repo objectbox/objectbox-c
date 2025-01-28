@@ -1,5 +1,5 @@
 /*
- * Copyright 2018-2023 ObjectBox Ltd. All rights reserved.
+ * Copyright 2018-2025 ObjectBox Ltd. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@
 #include "objectbox-sync.h"
 #include "objectbox.hpp"
 
-static_assert(OBX_VERSION_MAJOR == 4 && OBX_VERSION_MINOR == 0 && OBX_VERSION_PATCH == 3,  // NOLINT
+static_assert(OBX_VERSION_MAJOR == 4 && OBX_VERSION_MINOR == 1 && OBX_VERSION_PATCH == 0,  // NOLINT
               "Versions of objectbox.h and objectbox-sync.hpp files do not match, please update");
 
 namespace obx {
@@ -42,6 +42,12 @@ public:
 
     SyncCredentials(OBXSyncCredentialsType type, const std::string& username, const std::string& password)
         : type_(type), username_(username), password_(password) {}
+
+    /// Only available if initialized with byte data (not username/password).
+    const uint8_t* data() const { return data_.data(); }
+
+    /// Only available if initialized with byte data (not username/password).
+    size_t dataSize() const { return data_.size(); }
 
     static SyncCredentials none() {
         return SyncCredentials(OBXSyncCredentialsType::OBXSyncCredentialsType_NONE, std::vector<uint8_t>{});
@@ -324,7 +330,8 @@ public:
     /// Returns the protocol version of the server after a connection was established (or attempted), zero otherwise.
     uint32_t serverProtocolVersion() const { return obx_sync_protocol_version_server(cPtr()); }
 
-    /// Configure authentication credentials.
+    /// Configure the (single) authentication credentials used by the client to authenticate against the Sync Server.
+    /// To send multiple credentials, call addCredentials() instead.
     /// The accepted OBXSyncCredentials type depends on your sync-server configuration.
     void setCredentials(const SyncCredentials& creds) {
         obx_err err;
@@ -345,6 +352,31 @@ public:
         internal::checkErrOrThrow(err);
     }
 
+    /// For authentication with multiple credentials, collect credentials by calling this function multiple times.
+    /// When adding the last credentials element, the "complete" flag must be set to true.
+    /// When completed, it will "activate" the collected credentials and replace any previously set credentials and
+    /// potentially trigger a reconnection/login attempt.
+    /// @param creds One of multiple credentials to add.
+    /// @param complete set to true when adding the last credentials element to activate the set of credentials
+    void addCredentials(const SyncCredentials& creds, bool complete) {
+        obx_err err;
+        switch (creds.type_) {
+            case OBXSyncCredentialsType_OBX_ADMIN_USER:
+            case OBXSyncCredentialsType_USER_PASSWORD:
+                err = obx_sync_credentials_add_user_password(cPtr(), creds.type_, creds.username_.c_str(),
+                                                             creds.password_.c_str(), complete);
+                break;
+            case OBXSyncCredentialsType_NONE:
+            case OBXSyncCredentialsType_SHARED_SECRET:
+            case OBXSyncCredentialsType_SHARED_SECRET_SIPPED:
+            case OBXSyncCredentialsType_GOOGLE_AUTH:
+            default:
+                err = obx_sync_credentials_add(cPtr(), creds.type_, creds.data_.empty() ? nullptr : creds.data_.data(),
+                                               creds.data_.size(), complete);
+        }
+        internal::checkErrOrThrow(err);
+    }
+
     /// Triggers a reconnection attempt immediately.
     /// By default, an increasing backoff interval is used for reconnection attempts.
     /// But sometimes the user of this API has additional knowledge and can initiate a reconnection attempt sooner.
@@ -355,7 +387,7 @@ public:
     /// Use with caution, setting a low value (i.e. sending heartbeat very often) may cause an excessive network usage
     /// as well as high server load (when there are many connected clients).
     /// @param interval default value is 25 minutes (1 500 000 milliseconds), which is also the allowed maximum.
-    /// @throws if value is not in the allowed range, e.g. larger than the maximum (1 500 000).
+    /// @throws IllegalArgumentException if value is not in the allowed range, e.g. larger than the maximum (1 500 000).
     void setHeartbeatInterval(std::chrono::milliseconds interval) {
         internal::checkErrOrThrow(obx_sync_heartbeat_interval(cPtr(), static_cast<uint64_t>(interval.count())));
     }
@@ -375,7 +407,7 @@ public:
     }
 
     /// Configures the maximum number of outgoing TX messages that can be sent without an ACK from the server.
-    /// @throws if value is not in the valid range 1-20
+    /// @throws IllegalArgumentException if value is not in the valid range 1-20
     void maxMessagesInFlight(int value) { internal::checkErrOrThrow(obx_sync_max_messages_in_flight(cPtr(), value)); }
 
     /// Once the sync client is configured, you can "start" it to initiate synchronization.
@@ -838,7 +870,8 @@ public:
     }
 
     /// Sets credentials for the server to accept. Use before start().
-    /// @param data may be NULL in combination with OBXSyncCredentialsType_NONE
+    /// @param creds SyncCredentials, e.g. a shared secret or another non-user-specific credential.
+    /// @throws IllegalArgumentException for unsupported credentials types
     void setCredentials(const SyncCredentials& creds) {
         if (creds.type_ == OBXSyncCredentialsType_OBX_ADMIN_USER ||
             creds.type_ == OBXSyncCredentialsType_USER_PASSWORD) {
@@ -852,13 +885,14 @@ public:
     }
 
     /// Sets credentials for the server to accept. Use before start().
-    /// @param data may be NULL in combination with OBXSyncCredentialsType_NONE
+    /// @param type The credentials type; it must not require additional data
+    ///        (e.g. for shared secret, use setCredentials()).
     void enableAuthenticationType(OBXSyncCredentialsType type) {
         internal::checkErrOrThrow(obx_sync_server_enable_auth(cPtr(), type));
     }
 
-    /// Sets the number of worker threads. Calll before start().
-    /// @param thread_count The default is "0" which is hardware dependent, e.g. a multiple of CPU "cores".
+    /// Sets the number of worker threads. Call before start().
+    /// @param threadCount The default is "0" which is hardware-dependent, e.g. a multiple of CPU "cores".
     void setWorkerThreads(int threadCount) {
         internal::checkErrOrThrow(obx_sync_server_worker_threads(cPtr(), threadCount));
     }

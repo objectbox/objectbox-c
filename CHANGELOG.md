@@ -1,6 +1,19 @@
 ObjectBox C and C++ API Changelog
 =================================
 
+4.1.0 (2025-01-28)
+------------------
+* New query conditions for map properties (via flex properties):
+  now supports key/value pairs for inequality conditions (e.g. greater than, less than) for string,
+  integer and floating point values
+* Vector search: add "Geo" distance type for longitude/latitude pairs
+* Various internal improvements
+
+### Sync
+
+* Add JWT authentication
+* Sync clients can now send multiple credentials for login
+
 4.0.3 (2024-11-11)
 ------------------
 * CMake Integration with ObjectBox Generator 4.0.0 

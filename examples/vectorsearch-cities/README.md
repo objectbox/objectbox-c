@@ -1,7 +1,10 @@
-# C++ Example App: VectorSearch-Cities
+VectorSearch-Cities ObjectBox C++ Example
+=========================================
 
-This is a sample command-line C++ application that
-illustrates conducting vector-search query operations in ObjectBox. 
+This example demonstrates vector search in ObjectBox using capital cities.
+You can search cities according to their geolocations (latitude and longitude),
+e.g. find the closest cities to a given city or a given geolocation.
+It uses a simple command-line interface; see below for some example queries.
 
 ## Prerequisites
 
@@ -53,31 +56,31 @@ ls
 212  Yerevan             40.19     44.52    
 ```
 
-Search nearest neighbors to Berlin:
+Search nearest neighbors to Berlin (note that "Score" is the distance in kilometers):
 
 ```
 name Berlin, 10
  ID  Name                Location            Score     
  28  Berlin              52.52     13.40      0.00
-147  Prague              50.08     14.44      7.04
- 49  Copenhagen          55.68     12.57     10.66
-200  Vienna              48.21     16.37     27.41
- 34  Bratislava          48.15     17.11     32.82
- 89  Ljubljana           46.06     14.51     42.98
-196  Vaduz               47.14     9.52      44.02
- 39  Budapest            47.50     19.04     56.98
-203  Warsaw              52.23     21.01     57.95
- 94  Luxembourg City     49.61     6.13      61.36
+147  Prague              50.08     14.44     281.13
+ 49  Copenhagen          55.68     12.57     355.15
+203  Warsaw              52.23     21.01     517.17
+200  Vienna              48.21     16.37     523.55
+ 34  Bratislava          48.15     17.11     552.40
+  6  Amsterdam           52.37     4.89      576.75
+ 94  Luxembourg City     49.61     6.13      601.97
+ 37  Brussels            50.85     4.35      650.65
+196  Vaduz               47.14     9.52      659.56
 ```
 
-Search nearest neighbors to Area 51:
+Search nearest neighbors to Area 51 (note that "Score" is the distance in kilometers):
 
 ```
 geo 37.23, -115.80
  ID  Name                Location            Score     
-107  Mexico City         19.43     -99.13    594.53
- 27  Belmopan            17.25     -88.76    1130.38
- 64  Guatemala City      14.63     -90.51    1150.28
-164  San Salvador        13.69     -89.22    1260.59
- 67  Havana              23.11     -82.37    1317.07
+107  Mexico City         19.43     -99.13    2555.95
+204  Washington D.C.     38.91     -77.04    3372.90
+129  Ottawa              45.42     -75.70    3431.69
+ 27  Belmopan            17.25     -88.76    3452.91
+ 64  Guatemala City      14.63     -90.51    3542.07
 ```

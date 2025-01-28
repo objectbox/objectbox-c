@@ -2,6 +2,6 @@ table City {
     id: ulong;
     name: string;
     /// objectbox: index=hnsw, hnsw-dimensions=2
-    /// objectbox: hnsw-distance-type=Euclidean
+    /// objectbox: hnsw-distance-type=Geo
     location: [float];
 }

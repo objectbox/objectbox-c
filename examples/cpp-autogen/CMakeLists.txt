@@ -5,7 +5,7 @@ add_executable(${PROJECT_NAME}
         main.cpp
         )
 
-# add_obx_schema provided by ObjectBoxGenerator package.
+# add_obx_schema provided by ObjectBoxGenerator package, which is fetched in one of the parent CMakeLists.txt files.
 add_obx_schema(TARGET ${PROJECT_NAME} SCHEMA_FILES tasklist.fbs INSOURCE)
 
 set_target_properties(${PROJECT_NAME} PROPERTIES

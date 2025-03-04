@@ -1,6 +1,13 @@
 ObjectBox C and C++ API Changelog
 =================================
 
+4.2.0 (2025-03-04)
+------------------
+* Extended the model by external names and types:
+  allows defining a different name for an external database, which ObjectBox syncs with.
+
+This prepares upcoming features for our [MongoDB Sync Connector](https://sync.objectbox.io/mongodb-sync-connector). 
+
 4.1.0 (2025-01-28)
 ------------------
 * New query conditions for map properties (via flex properties):

@@ -16,14 +16,18 @@
 
 #pragma once
 
+#include <chrono>
+
 #include "objectbox-sync.h"
 #include "objectbox.hpp"
 
-static_assert(OBX_VERSION_MAJOR == 4 && OBX_VERSION_MINOR == 2 && OBX_VERSION_PATCH == 0,  // NOLINT
+static_assert(OBX_VERSION_MAJOR == 4 && OBX_VERSION_MINOR == 3 && OBX_VERSION_PATCH == 0,  // NOLINT
               "Versions of objectbox.h and objectbox-sync.hpp files do not match, please update");
 
 namespace obx {
 
+/// Credentials for logging into a Sync Server that are passed to SyncClient.
+/// Typically created using a factory method, e.g. `SyncCredentials::none()` or `SyncCredentials::jwtIdToken(...)`.
 class SyncCredentials {
     friend SyncClient;
     friend SyncServer;
@@ -72,6 +76,23 @@ public:
     static SyncCredentials userPassword(const std::string& username, const std::string& password) {
         return SyncCredentials(OBXSyncCredentialsType::OBXSyncCredentialsType_USER_PASSWORD, username, password);
     }
+
+    static SyncCredentials jwtIdToken(const std::string& token) {
+        return SyncCredentials(OBXSyncCredentialsType::OBXSyncCredentialsType_JWT_ID, token);
+    }
+
+    static SyncCredentials jwtAccessToken(const std::string& token) {
+        return SyncCredentials(OBXSyncCredentialsType::OBXSyncCredentialsType_JWT_ACCESS, token);
+    }
+
+    static SyncCredentials jwtRefreshToken(const std::string& token) {
+        return SyncCredentials(OBXSyncCredentialsType::OBXSyncCredentialsType_JWT_REFRESH, token);
+    }
+
+    static SyncCredentials jwtCustomToken(const std::string& token) {
+        return SyncCredentials(OBXSyncCredentialsType::OBXSyncCredentialsType_JWT_CUSTOM, token);
+    }
+
 };
 
 /// Listens to login events on a sync client.
@@ -801,7 +822,7 @@ public:
     /// - accepted credentials via setCredentials() (always required)
     /// - SSL certificate info via setCertificatePath() (required if you use wss)
     /// \note The model given via store_options is also used to verify the compatibility of the models presented by
-    /// clients.
+    ///       clients.
     ///       E.g. a client with an incompatible model will be rejected during login.
     /// @param storeOptions Options for the server's store. Will be "consumed"; do not use the Options object again.
     /// @param url The URL (following the pattern protocol:://IP:port) the server should listen on.

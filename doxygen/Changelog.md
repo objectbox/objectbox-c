@@ -3,6 +3,23 @@
 ObjectBox C and C++ API Changelog
 =================================
 
+4.3.0 (2025-05-12)
+------------------
+* Windows: msvc runtime is now embedded to avoid incompatible msvcp140.dll (e.g. those shipped with some JDKs)
+* External property types (via MongoDB connector): JsonToNative to support sub (embedded/nested) documents/arrays in MongoDB 
+* External property types (via MongoDB connector): support ID mapping to UUIDs (v4 and v7)
+* Admin: add class and dependency diagrams to the schema page (view and download)
+* Admin: improved data view for large vectors by displaying only the first elements and the full vector in a dialog
+* Admin: detects images stored as bytes and shows them as such (PNG, GIF, JPEG, SVG, WEBP)
+
+### Sync
+
+* Add "Log Events" for important server events, which can be viewed on new Admin page
+* Detect and ignore changes for objects that were put but were unchanged
+* The limit for message size was raised to 32 MB
+* Transactions above the message size limit will already fail on the client now (to better enforce the limit)
+* C++: add missing APIs for JWT token credentials
+
 4.2.0 (2025-03-04)
 ------------------
 * Extended the model by external names and types:

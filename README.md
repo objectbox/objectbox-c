@@ -18,7 +18,7 @@ box.put({.text = "Buy milk"});
 
 See [ObjectBox C and C++ docs](https://cpp.objectbox.io/) for API details.
 
-**Latest version: 4.2.0** (2025-03-04).
+**Latest version: 4.3.0** (2025-05-12).
 See [changelog](CHANGELOG.md) for more details.
 
 ## Table of Contents:

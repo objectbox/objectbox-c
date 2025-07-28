@@ -1,5 +1,5 @@
 # C++ local-only example
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.10)
 set(PROJECT_NAME objectbox-c-examples-vectorsearch-cities)
 project(${PROJECT_NAME} CXX)
 add_executable(${PROJECT_NAME}

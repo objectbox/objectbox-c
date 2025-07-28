@@ -1,6 +1,14 @@
 ObjectBox C and C++ API Changelog
 =================================
 
+4.3.1 (2025-07-28)
+------------------
+* Cursor/Query: deleting a cursor (e.g. in a non-creator thread) waits for any query to finish 
+* Query: added safety check to detect using a deleted query instance
+* Admin: fix displaying some string values twice
+* Add a few missing allocation failure checks 
+* Internal improvements, e.g. updated dependencies and compiler to new major versions
+
 4.3.0 (2025-05-12)
 ------------------
 * Windows: msvc runtime is now embedded to avoid incompatible msvcp140.dll (e.g. those shipped with some JDKs)

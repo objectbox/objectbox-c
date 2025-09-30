@@ -1,7 +1,43 @@
-image: objectboxio/cbuild-ubuntu18.04:2023-08-23
-
-build:
+build:ubuntu18:
   stage: build
   tags: [x64, docker ]
+  image: objectboxio/cbuild-ubuntu18.04:2023-08-23 # Uses non-default CMake 3.11
   script:
     - ./test.sh
+
+build:ubuntu20:
+  extends: build:ubuntu18
+  image: objectboxio/cbuild-ubuntu20.04:2023-08-23
+
+build:ubuntu24:
+  extends: build:ubuntu18
+  image: objectboxio/cbuild-ubuntu24.04:2025-09-30
+
+build:rocky8:
+  extends: build:ubuntu18
+  image: objectboxio/cbuild-rocky8:2023-08-23
+
+build:examples:
+  stage: build
+  tags: [x64, docker ]
+  image: objectboxio/cbuild-ubuntu20.04:2023-08-23 # CMake 3.16; examples need at least CMake 3.14
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends git
+  script:
+    - cd examples/c-tasks && ./build.sh
+    - build/objectbox-examples-c-tasks "Buy raspberries"
+    - build/objectbox-examples-c-tasks
+    - cd ../c-tasks-lowlevel && ./build.sh
+    - build/objectbox-examples-c-tasks-lowlevel "Buy blueberries"
+    - build/objectbox-examples-c-tasks-lowlevel
+    - cd ../tasks && ./build.sh
+    - printf "new \"Buy apples\"\nls\nexit" | build/objectbox-examples-tasks
+    - cd ../tasks-sync && ./build.sh
+    - printf "new \"Buy bananas\"\nls\nexit" | build/objectbox-examples-tasks-sync
+    - cd ../vectorsearch-cities && ./build.sh
+    - printf "name berlin\nexit" | build/objectbox-examples-vectorsearch-cities
+
+build:examples-ubuntu24.04:
+  extends: build:examples
+  image: objectboxio/cbuild-ubuntu24.04:2025-09-30
+  before_script: []

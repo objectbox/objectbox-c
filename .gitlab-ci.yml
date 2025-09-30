@@ -37,7 +37,7 @@ build:examples:
     - cd ../vectorsearch-cities && ./build.sh
     - printf "name berlin\nexit" | build/objectbox-examples-vectorsearch-cities
 
-build:examples-ubuntu24.04:
+build:examples-ubuntu24:
   extends: build:examples
   image: objectboxio/cbuild-ubuntu24.04:2025-09-30
   before_script: []

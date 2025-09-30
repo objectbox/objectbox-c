@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, macos-26, windows-latest]
+        os: [ ubuntu-latest, macos-latest, macos-26, windows-latest ]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,7 +29,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, macos-26, windows-latest]
+        os: [ ubuntu-latest, macos-latest, macos-26, windows-latest ]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -73,7 +73,7 @@ jobs:
             done
             return 1
           }
-
+          
           echo "### c-tasks example ###"
           cd examples/c-tasks && ./build.sh
           bin=$(find_bin objectbox-examples-c-tasks)

@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, macos-26, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build and Test
+        shell: bash
+        run: |
+          ./test.sh
+
+  examples:
+    name: Examples (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, macos-26, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build and run examples
+        shell: bash
+        run: |
+          set -e
+          
+          # Only needed on Windows runners: copy required DLL next to the executable
+          copy_dll_to_dir() {
+            local bin_dir="$1"
+            local src
+            for src in \
+              build/_deps/objectbox-sync-download-src/lib/objectbox.dll \
+              build/_deps/objectbox-download-src/lib/objectbox.dll; do
+              if [ -f "$src" ]; then
+                cp -f "$src" "$bin_dir/"
+                return 0
+              fi
+            done
+            return 1
+          }
+
+          # This is mainly useful for Windows, as it defaults to use Debug/Release sub-directories
+          find_bin() {
+            local base="$1"
+            local candidate
+            local exe_file="$base"
+            if [ "${RUNNER_OS:-}" == "Windows" ]; then
+              exe_file="$base.exe"
+            fi
+          
+            for candidate in "build/$exe_file" "build/Debug/$exe_file" "build/Release/$exe_file"; do
+              if [ -f "$candidate" ]; then
+                if [ "${RUNNER_OS:-}" == "Windows" ]; then
+                  copy_dll_to_dir "$(dirname "$candidate")"
+                fi
+                echo "$candidate"
+                return 0
+              fi
+            done
+            return 1
+          }
+
+          echo "### c-tasks example ###"
+          cd examples/c-tasks && ./build.sh
+          bin=$(find_bin objectbox-examples-c-tasks)
+          "$bin" "Buy raspberries"
+          "$bin"
+          
+          echo "### c-tasks-lowlevel example ###"
+          cd ../c-tasks-lowlevel && ./build.sh
+          bin=$(find_bin objectbox-examples-c-tasks-lowlevel)
+          "$bin" "Buy blueberries"
+          "$bin"
+          
+          echo "### tasks example ###"
+          cd ../tasks && ./build.sh
+          bin=$(find_bin objectbox-examples-tasks)
+          printf "new \"Buy apples\"\nls\nexit\n" | "$bin"
+          
+          echo "### tasks-sync example ###"
+          cd ../tasks-sync && ./build.sh
+          bin=$(find_bin objectbox-examples-tasks-sync)
+          printf "new \"Buy bananas\"\nls\nexit\n" | "$bin"
+          
+          echo "### vectorsearch-cities example ###"
+          cd ../vectorsearch-cities && ./build.sh
+          bin=$(find_bin objectbox-examples-vectorsearch-cities)
+          printf "name berlin\nexit\n" | "$bin"

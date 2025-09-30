@@ -1,0 +1,6 @@
+# build.sh uses build/ directory
+build/
+
+# ObjectBox Database files
+**/data.mdb
+**/lock.mdb

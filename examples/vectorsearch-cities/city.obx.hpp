@@ -12,9 +12,12 @@
 
 struct City_;
 
+/// A city with a 2D location vector for vector search.
 struct City {
     obx_id id;
     std::string name;
+    /// A 2D vector representing the city's location with latitude and longitude.
+    /// Using the "Geo" distance type, which specializes in geospatial search (haversine distance).
     std::vector<float> location;
 
     struct _OBX_MetaInfo {

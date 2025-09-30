@@ -1,7 +1,12 @@
+/// A city with a 2D location vector for vector search.
 table City {
     id: ulong;
     name: string;
+
+    /// A 2D vector representing the city's location with latitude and longitude.
+    /// Using the "Geo" distance type, which specializes in geospatial search (haversine distance).
     /// objectbox: index=hnsw, hnsw-dimensions=2
-    /// objectbox: hnsw-distance-type=Geo
+    // TODO requires Generator V5: objectbox: hnsw-distance-type=Geo
+    /// objectbox: hnsw-distance-type=Euclidean
     location: [float];
 }

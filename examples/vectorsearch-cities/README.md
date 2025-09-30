@@ -6,44 +6,41 @@ You can search cities according to their geolocations (latitude and longitude),
 e.g. find the closest cities to a given city or a given geolocation.
 It uses a simple command-line interface; see below for some example queries.
 
-## Prerequisites
+## 2D vs. high-dimensional vector search
 
-- Download ObjectBox
+We chose this example as an intuitive way to demonstrate ObjectBox vector search;
+e.g. cities with 2D location vectors are relatively easy to understand and work with.
+While this is a perfectly valid use case, ObjectBox vector search is primarily built for high-dimensional vector data.
+Thus, ObjectBox vector search is typically used for embeddings produced by AI models,
+which have hundreds or thousands of dimensions (e.g. there's no limit on the number of dimensions).
 
-## Build
+## Build and run
 
-```
-cmake -S . -B build
-cmake --build build
-```
+You need CMake 3.14+ and a C++14 compiler to build this example.
+Run `./build.sh run` is the simplest option; other options are described in the [build and run](../README.md#build-and-run) section of the parent directory.
 
-## Run
+## Usage examples
 
-```
-cd build
-./objectbox-c-examples-vectorsearch-cities
-```
+Once you start the example, you will see something like this:
 
 ```
 Welcome to the ObjectBox vectorsearch-cities app example
-Available commands are: 
-    import <filepath>          import cities database
-    ls [<prefix>]              list cities (with common <prefix> if set)
-    name <city>[,<n>]          search <n> nearest neighbor cities to <city> (<n> defaults to 5) 
-    geo <lat>,<long>[,<n>]     search <n> nearest neighbor cities to geo-location (<n> defaults to 5)
+Available commands are:
+    import <filepath>          Import CSV data (try cities.csv)
+    ls [<prefix>]              List cities (with common <prefix> if set)
+    name <city>[,<n>]          Search <n> cities to nearest to the given <city> name/prefix
+                               (<n> defaults to 5; try `name Berlin` or `name berl`)
+    geo <lat>,<long>[,<n>]     Search <n> cities nearest to the given geo location
+                               (<n> defaults to 5; try `geo 50,10`)
     add <city>,<lat>,<long>    add location
+    removeAll                  remove all existing data
     exit                       close the program
     help                       display this help
 ```
 
-If you start this example for the first time, import some capital cities:
+Now, you can interact with it by typing in commands.
 
-```
-import ../cities.csv
-Imported 211 entries from ../cities.csv
-```
-
-List all entries:
+List all entries with `ls`:
 
 ```
 ls
@@ -56,7 +53,7 @@ ls
 212  Yerevan             40.19     44.52    
 ```
 
-Search nearest neighbors to Berlin (note that "Score" is the distance in kilometers):
+Search nearest neighbors to Berlin with `name Berlin, 10` (note that "Score" is the distance in kilometers):
 
 ```
 name Berlin, 10
@@ -73,7 +70,7 @@ name Berlin, 10
 196  Vaduz               47.14     9.52      659.56
 ```
 
-Search nearest neighbors to Area 51 (note that "Score" is the distance in kilometers):
+Search nearest neighbors to Area 51 via latitude and longitude with `geo 37.23, -115.80` (note that "Score" is the distance in kilometers):
 
 ```
 geo 37.23, -115.80

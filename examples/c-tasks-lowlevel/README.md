@@ -1,19 +1,24 @@
-# Example: Tasks
+# Example: Tasks (low-level)
+
+**Deprecation warning:** This example is mostly deprecated.
+It's using the low-level cursor API and also the ObjectBox Generator approach is now the recommended way to use ObjectBox.
+Information here may be outdated.
+
 This example shows how to use the ObjectBox C API to create a simple console-based task-list application.
 
 To add a new task, simply enter the task text as arguments:     
 
 ```bash
-./objectbox-c-examples-tasks Buy milk
+./objectbox-examples-c-tasks-lowlevel Buy milk
 ```
 
-Now you can run `./objectbox-c-examples-tasks` without arguments to see the list of open tasks:
+Now you can run `./objectbox-examples-c-tasks-lowlevel` without arguments to see the list of open tasks:
 
     ID  Created              Finished             Text
      1  2018-09-10 12:44:07                       Buy milk
 
-To complete a task, you would run `./objectbox-c-examples-tasks --done 1` (1 is the ID of the task as shown above).
-And to show all complete tasks you can run `./objectbox-c-examples-tasks --done`.
+To complete a task, you would run `./objectbox-examples-c-tasks-lowlevel --done 1` (1 is the ID of the task as shown above).
+And to show all complete tasks you can run `./objectbox-examples-c-tasks-lowlevel --done`.
 
 ### Code overview
 Files:
@@ -59,11 +64,11 @@ Some quick notes on IDs and UIDs in the ObjectBox model:
 
 ### Command line options
 
-Run `objectbox-c-examples-tasks --help` to see available options for the example application.
+Run `objectbox-examples-c-tasks-lowlevel --help` to see available options for the example application.
 The output looks like this:
  
 ```text
-usage: objectbox-c-examples-tasks 
+usage: objectbox-examples-c-tasks-lowlevel 
     text of a new task             create a new task with the given text
                                    (default) lists active tasks
     --done                         lists active and done tasks

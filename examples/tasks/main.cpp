@@ -1,5 +1,5 @@
 /*
- * Copyright 2018-2024 ObjectBox Ltd. All rights reserved.
+ * Copyright 2018-2020 ObjectBox Ltd. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,10 +16,7 @@
 
 #define OBX_CPP_FILE // this "materializes" implementations from objectbox.hpp
 
-#include "VectorSearchCitiesApp.hpp"
-#include "objectbox.hpp"
-
-using namespace obx;
+#include "TasklistCmdlineApp.hpp"
 
 int processArgs(int argc, char* argv[], obx::Options& outOptions) {
     // Remember, argv[0] is application path
@@ -49,26 +46,19 @@ int processArgs(int argc, char* argv[], obx::Options& outOptions) {
 }
 
 int main(int argc, char* argv[]) {
-    std::cout << "** ObjectBox database (https://objectbox.io/) C++ vector search example (cities). **\n"
-                 "C++ docs: https://cpp.objectbox.io/ | https://docs.objectbox.io/on-device-vector-search\n"
-          << std::endl;
+    std::cout << "** ObjectBox database (https://objectbox.io/) C++ example (tasks). **\n"
+                 "C++ docs: https://cpp.objectbox.io/\n"
+              << std::endl;
 
-    if (!obx_has_feature(OBXFeature_VectorSearch)) {
-        std::cerr << "Vector search is not supported in this edition.\n"
-                     "Please ensure to get ObjectBox with vector search enabled."
-                  << std::endl;
-        return 1;
-    }
-
-    // Hint: create_obx_model() is provided by objectbox-model.h, which is a (pre)generated source file
-    Options options(create_obx_model());
+    // create_obx_model() provided by objectbox-model.h
+    // obx interface contents provided by objectbox.hpp
+    obx::Options options(create_obx_model());
 
     if (int err = processArgs(argc, argv, options)) {
         return err;
     }
 
-    Store store(options);
-    VectorSearchCitiesApp app(store);
-    app.checkImportData();
+    obx::Store store(options);
+    TasklistCmdlineApp app(store);
     return app.run();
 }

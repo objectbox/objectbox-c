@@ -1,5 +1,5 @@
-cmake_minimum_required(VERSION 3.5)
-# 3.5: Since CMake 3.27 VERSION < 3.5 produce a deprecation warning.
+cmake_minimum_required(VERSION 3.5...4.0)
+# ^ We likely require a new minimum version soon, as we do not test those ancient CMake versions anymore.
 
 # This CMake file has the following purposes:
 # * Define the ObjectBox library target (target name "objectbox"; or, if the sync variant is used, "objectbox-sync")
@@ -28,19 +28,25 @@ if (${CMAKE_VERSION} VERSION_LESS "3.11.0")
     link_directories("${CMAKE_CURRENT_SOURCE_DIR}/lib")
 else ()
     function(defineObjectBoxLibForURL VARIANT DL_URL)
+        # Fetch (download and un-archive) the ObjectBox library
         include(FetchContent)
-        project(objectbox${VARIANT}-download)
-        FetchContent_Declare(${PROJECT_NAME} URL ${DL_URL})
+        set(_obx_download_name objectbox${VARIANT}-download)
+        # Note: FetchContent_Populate(URL ${DL_URL}) on Windows CMake 3.31 downloaded to "wrong" dir (leaving out "_deps")
+        FetchContent_Declare(${_obx_download_name} URL ${DL_URL})
+        if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.14") # FetchContent_Populate with single param is deprecated
+            FetchContent_MakeAvailable(${_obx_download_name})
+        else()
+            FetchContent_Populate(${_obx_download_name})
+        endif()
+        set(DL_DIR "${${_obx_download_name}_SOURCE_DIR}")
+        message(STATUS "ObjectBox library saved to ${DL_DIR}")
 
-        FetchContent_Populate(${PROJECT_NAME})
-        set(DL_DIR "${${PROJECT_NAME}_SOURCE_DIR}")
-        message(STATUS "Pre-compiled ObjectBox library is saved in ${DL_DIR}")
-
-        project(objectbox${VARIANT})
-        add_library(${PROJECT_NAME} SHARED IMPORTED GLOBAL)
+        # Create the public imported target with the expected name: objectbox or objectbox-sync
+        set(_obx_public_target objectbox${VARIANT})
+        add_library(${_obx_public_target} SHARED IMPORTED GLOBAL)
         set(objectbox_include_dirs ${DL_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR}/external/)
         set_target_properties(
-                ${PROJECT_NAME} PROPERTIES
+                ${_obx_public_target} PROPERTIES
                 IMPORTED_LOCATION ${DL_DIR}/lib/${CMAKE_SHARED_LIBRARY_PREFIX}objectbox${CMAKE_SHARED_LIBRARY_SUFFIX}
                 IMPORTED_IMPLIB ${DL_DIR}/lib/${CMAKE_IMPORT_LIBRARY_PREFIX}objectbox${CMAKE_IMPORT_LIBRARY_SUFFIX}
                 INTERFACE_INCLUDE_DIRECTORIES "${objectbox_include_dirs}"
@@ -49,7 +55,7 @@ else ()
 
     function(defineObjectBoxLib VARIANT)
         # Configuration updated for each release
-        set(DL_VERSION 4.3.1)
+        set(DL_VERSION 5.0.0-rc)
 
         # Platform detection and other setup
         set(DL_URL https://github.com/objectbox/objectbox-c/releases/download)
@@ -108,7 +114,7 @@ else ()
     endif ()
     set(OBX_GEN_DL_URL https://raw.githubusercontent.com/objectbox/objectbox-generator/${ObjectBoxGenerator_CMAKE_VERSION}/cmake/FindObjectBoxGenerator.cmake)
 
-    if (${CMAKE_VERSION} VERSION_GREATER_EQUAL 3.18)
+    if (${CMAKE_VERSION} VERSION_GREATER_EQUAL 3.18) # 3.18 because DOWNLOAD_NO_EXTRACT
         message(STATUS "ObjectBox Generator: fetching version \"${ObjectBoxGenerator_CMAKE_VERSION}\"")
         include(FetchContent)
         FetchContent_Declare(FindObjectBoxGenerator URL ${OBX_GEN_DL_URL} DOWNLOAD_NO_EXTRACT TRUE)
@@ -140,10 +146,10 @@ else ()
 endif ()
 
 
-# If this project is top-level, include public tests and examples.
+# If this project is top-level, include public tests.
 # Otherwise, this CMake file is used from a user project, so we do not want to expose these.
 if (CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
     add_subdirectory(src-test)     # target:  objectbox-c-test
     add_subdirectory(src-test-gen) # target:  objectbox-c-gen-test
-    add_subdirectory(examples)     # targets: objectbox-c-examples-tasks-{c,cpp-{auto}gen,cpp-gen-sync}
+    # Note: examples are standalone CMake projects, so we do not include them here.
 endif ()

@@ -12,10 +12,12 @@
 
 struct Task_;
 
+/// A task with a description, a creation and completion date.
 struct Task {
     obx_id id;
     std::string text;
     int64_t date_created;
+    /// If not set (zero value), the task is not finished.
     int64_t date_finished;
 
     struct _OBX_MetaInfo {

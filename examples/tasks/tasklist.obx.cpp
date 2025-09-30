@@ -27,7 +27,7 @@ Task Task::_OBX_MetaInfo::fromFlatBuffer(const void* data, size_t size) {
 }
 
 std::unique_ptr<Task> Task::_OBX_MetaInfo::newFromFlatBuffer(const void* data, size_t size) {
-    auto object = std::unique_ptr<Task>(new Task());
+    auto object = std::make_unique<Task>();
     fromFlatBuffer(data, size, *object);
     return object;
 }

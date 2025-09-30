@@ -2,6 +2,6 @@ image: objectboxio/cbuild-ubuntu18.04:2023-08-23
 
 build:
   stage: build
-  tags: [x64, docker, linux]
+  tags: [x64, docker ]
   script:
     - ./test.sh

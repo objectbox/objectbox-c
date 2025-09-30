@@ -36,7 +36,7 @@
 #include <optional>
 #endif
 
-static_assert(OBX_VERSION_MAJOR == 4 && OBX_VERSION_MINOR == 3 && OBX_VERSION_PATCH == 1,  // NOLINT
+static_assert(OBX_VERSION_MAJOR == 5 && OBX_VERSION_MINOR == 0 && OBX_VERSION_PATCH == 0,  // NOLINT
               "Versions of objectbox.h and objectbox.hpp files do not match, please update");
 
 #ifdef __clang__
@@ -1279,6 +1279,7 @@ enum class QueryOp {
     Greater,
     GreaterOrEq,
     Contains,
+    ContainsElement,
     StartsWith,
     EndsWith,
     Between,
@@ -1286,12 +1287,12 @@ enum class QueryOp {
     NotIn,
     Null,
     NotNull,
-    NearestNeighbors
+    NearestNeighbors,
 };
 
-// Internal base class for all the condition containers. Each container starts with `QC` and ends with the type of the
-// contents. That's not necessarily the same as the property type the condition is used with, e.g. for Bool::equals()
-// using QCInt64, StringVector::contains query using QCString, etc.
+/// Internal base class for all the condition containers. Each container starts with `QC` and ends with the type of the
+/// contents. That's not necessarily the same as the property type the condition is used with, e.g. for Bool::equals()
+/// using QCInt64, StringVector::contains query using QCString, etc.
 class QC : public QueryCondition {
 protected:
     obx_schema_id propId_;
@@ -1457,7 +1458,10 @@ protected:
                 return obx_qb_contains_string(cqb, propId_, value_.c_str(), caseSensitive_);
             }
         } else if (PropertyType == OBXPropertyType_StringVector) {
-            if (op_ == QueryOp::Contains) {
+            if (op_ == QueryOp::ContainsElement) {
+                return obx_qb_contains_element_string(cqb, propId_, value_.c_str(), caseSensitive_);
+            } else if (op_ == QueryOp::Contains) {
+                // Deprecated
                 return obx_qb_any_equals_string(cqb, propId_, value_.c_str(), caseSensitive_);
             }
         }
@@ -1840,12 +1844,22 @@ class Property<EntityT, OBXPropertyType_StringVector> : public PropertyTypeless 
 public:
     explicit constexpr Property(obx_schema_id id) noexcept : PropertyTypeless(id) {}
 
+    /// @deprecated Please use containsElement() instead
     QCStringForStringVector contains(std::string&& value, bool caseSensitive = true) const {
         return {this->id_, QueryOp::Contains, caseSensitive, std::move(value)};
     }
 
+    /// @deprecated Please use containsElement() instead
     QCStringForStringVector contains(const std::string& value, bool caseSensitive = true) const {
         return contains(std::string(value), caseSensitive);
+    }
+
+    QCStringForStringVector containsElement(std::string&& value, bool caseSensitive = true) const {
+        return {this->id_, QueryOp::ContainsElement, caseSensitive, std::move(value)};
+    }
+
+    QCStringForStringVector containsElement(const std::string& value, bool caseSensitive = true) const {
+        return containsElement(std::string(value), caseSensitive);
     }
 };
 

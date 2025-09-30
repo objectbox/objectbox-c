@@ -26,50 +26,33 @@
 #include "objectbox-model.h"
 #include "objectbox.hpp"
 
-int processArgs(int argc, char* argv[], obx::Options& outOptions) {
-    // Remember, argv[0] is application path
-
-    const char* directory = nullptr;
-    if (argc == 2) {
-        directory = argv[1];
-    } else if (argc == 3) {
-        std::string paramName = argv[1];
-        if (paramName == "-d" || paramName == "--directory") {
-            directory = argv[2];
-        } else {
-            std::cerr << "Unknown argument " << paramName << ". Expected -d or --directory." << std::endl;
-            return 1;
-        }
-    } else if (argc > 3) {
-        std::cerr << "This app only takes zero, one or two arguments" << std::endl;
-        return 1;
-    }
-
-    if (directory) {
-        outOptions.directory(directory);
-        std::cout << "Using DB directory " << directory << std::endl;
-    }
-
-    return 0;
-}
-
+/// Demonstrates ObjectBox vector search in an interactive console application.
+/// It imports cities from a CSV file, and allows to search for cities by name or location.
+/// Users interact with simple commands like `name <city>` or `geo <lat>,<long>`.
+/// It's also possible to import our own data via a CSV file.
 class VectorSearchCitiesApp {
     // for string delimiter
     enum class Command { Import, Add, SearchByName, SearchByGeoLocation, RemoveAll, Exit, List, Help, Unknown };
 
     obx::Store& store;
     obx::Box<City> cityBox;
+
+    /// The query to select cities by name (standard text-based search).
+    /// As a member, the query is just build once and can be used multiple times.
     obx::Query<City> queryCityByName_;
+
+    /// The query to select cities by location (vector search).
+    /// As a member, the query is just build once and can be used multiple times.
     obx::Query<City> queryCityByLocation_;
 
 public:
-    VectorSearchCitiesApp(obx::Store& obxStore)
+    explicit VectorSearchCitiesApp(obx::Store& obxStore)
         : store(obxStore),
           cityBox(obxStore),
           queryCityByName_(cityBox.query(City_::name.startsWith("", false)).build()),
           queryCityByLocation_(cityBox.query(City_::location.nearestNeighbors({}, 1)).build()) {}
 
-    /// If no cities are present in the DB, tries to import from cities.csv
+    /// If no cities are present in the DB, imports data from cities.csv
     void checkImportData() {
         uint64_t count = cityBox.count();
         if (count == 0) {
@@ -83,6 +66,7 @@ public:
         }
     }
 
+    /// The main loop: reads commands from the console and delegates them to processCommand().
     int run() {
         std::cout << "Welcome to the ObjectBox VectorSearch Cities app example" << std::endl;
         printHelp();
@@ -107,6 +91,8 @@ public:
     }
 
 protected:
+    /// This is the central function processing the commands.
+    /// It demonstrates ObjectBox database API usage, e.g. putting and reading objects.
     void processCommand(Command command, const std::vector<std::string>& args) {
         switch (command) {
             case Command::Import: {
@@ -208,7 +194,6 @@ protected:
     }
 
     static void splitInput(const std::string& input, std::vector<std::string>& outArgs, char delim = ' ') {
-        size_t delimIndex = 0;
         outArgs.clear();
         std::string::size_type pos, pos_start = 0;
         while ((pos = input.find(delim, pos_start)) != std::string::npos) {
@@ -220,7 +205,7 @@ protected:
         outArgs.push_back(input.substr(pos_start));
     }
 
-    Command getCommand(const std::string& cmd) {
+    Command getCommand(const std::string& cmd) const {
         if (cmd == "import") return Command::Import;
         if (cmd == "add") return Command::Add;
         if (cmd == "name") return Command::SearchByName;
@@ -232,7 +217,7 @@ protected:
         return Command::Unknown;
     }
 
-    void printHelp() {
+    void printHelp() const {
         std::cout << "Available commands are:\n"
                   << "    import <filepath>          Import CSV data (try cities.csv)\n"
                   << "    ls [<prefix>]              List cities (with common <prefix> if set)\n"

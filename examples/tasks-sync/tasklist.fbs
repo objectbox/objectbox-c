@@ -1,3 +1,5 @@
+/// objectbox:sync
+/// A task with a description, a creation and completion date.
 table Task {
     id: ulong;
     text: string;
@@ -6,6 +8,6 @@ table Task {
     date_created: long;
 
     /// objectbox:date
+    /// If not set (zero value), the task is not finished.
     date_finished: long;
-
 }

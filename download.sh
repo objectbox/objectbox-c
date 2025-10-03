@@ -60,6 +60,8 @@ fi
 
 if [[ $arch == "x86_64" ]]; then
     arch=x64
+elif [[ $arch == "aarch64" ]] || [[ $arch == "arm64" ]] || [[ $arch == "ARM64" ]]; then
+    arch=arm64
 elif [[ $arch == armv7* ]]; then
     arch=armv7hf
     echo "Selected ${arch} architecture for download (hard FP only!)"
@@ -174,6 +176,7 @@ linux-armv7hf
 linux-aarch64
 windows-x86
 windows-x64
+windows-arm64
 macos-universal
 " #SUPPORTED_PLATFORMS
 if [ -z "$( awk -v key="${conf}" '$1 == key {print $NF}' <<< "$SUPPORTED_PLATFORMS" )" ]; then

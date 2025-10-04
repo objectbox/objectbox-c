@@ -2,13 +2,18 @@ ObjectBox C and C++ API Changelog
 =================================
 
 5.0.0-rc (2025-09-30)
-------------------
+---------------------
 
 ### User-Specific Data Sync
 
 * Sync filters: define server-side filter expression to sync individual data for each sync user.
   This is also known as "user-specific data sync" and requires Sync clients version 5.0.
 * Client variables: clients may define key/value pairs that can be used in sync filters
+
+### New supported platform: Windows ARM64
+
+* Besides x86 and x64, ObjectBox now also supports Windows ARM64
+* Use git tag `v5.0.0-rc2` for CMake (the arm64 libs were added to the 5.0.0-rc release in a later commit)
 
 ### Fixes
 

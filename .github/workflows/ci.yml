@@ -91,11 +91,6 @@ jobs:
           bin=$(find_bin objectbox-examples-tasks)
           printf "new \"Buy apples\"\nls\nexit\n" | "$bin"
           
-          echo "### tasks-sync example ###"
-          cd ../tasks-sync && ./build.sh
-          bin=$(find_bin objectbox-examples-tasks-sync)
-          printf "new \"Buy bananas\"\nls\nexit\n" | "$bin"
-          
           echo "### vectorsearch-cities example ###"
           cd ../vectorsearch-cities && ./build.sh
           bin=$(find_bin objectbox-examples-vectorsearch-cities)

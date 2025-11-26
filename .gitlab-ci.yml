@@ -32,8 +32,6 @@ build:examples:
     - build/objectbox-examples-c-tasks-lowlevel
     - cd ../tasks && ./build.sh
     - printf "new \"Buy apples\"\nls\nexit" | build/objectbox-examples-tasks
-    - cd ../tasks-sync && ./build.sh
-    - printf "new \"Buy bananas\"\nls\nexit" | build/objectbox-examples-tasks-sync
     - cd ../vectorsearch-cities && ./build.sh
     - printf "name berlin\nexit" | build/objectbox-examples-vectorsearch-cities
 

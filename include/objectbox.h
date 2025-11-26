@@ -1582,10 +1582,18 @@ OBX_C_API OBX_bytes_array* obx_cursor_backlinks(OBX_cursor* cursor, obx_schema_i
 OBX_C_API OBX_id_array* obx_cursor_backlink_ids(OBX_cursor* cursor, obx_schema_id entity_id, obx_schema_id property_id,
                                                 obx_id id);
 
+/// Puts a standalone (many-to-many) relation instance to "connect" two objects.
+/// @warning Ensure that the source and target IDs are pointing to actually existing objects.
+///          Failing to do so may result in subtle errors.
+///          For example, a known problem is that sync filters always filter out relations that have no valid objects.
+/// @note It's called a "standalone" relation because the relation data is stored separately of object data.
 OBX_C_API obx_err obx_cursor_rel_put(OBX_cursor* cursor, obx_schema_id relation_id, obx_id source_id, obx_id target_id);
+
+/// Removes a standalone (many-to-many) relation instance to "disconnect" two objects.
 OBX_C_API obx_err obx_cursor_rel_remove(OBX_cursor* cursor, obx_schema_id relation_id, obx_id source_id,
                                         obx_id target_id);
 
+/// Gets the standalone (many-to-many) relation instance for the given source ID (the "connections" to other objects).
 /// @returns NULL if the operation failed, see functions like obx_last_error_code() to get error details
 OBX_C_API OBX_id_array* obx_cursor_rel_ids(OBX_cursor* cursor, obx_schema_id relation_id, obx_id source_id);
 

@@ -1,8 +1,8 @@
 ObjectBox C and C++ API Changelog
 =================================
 
-5.0.0-rc (2025-09-30)
----------------------
+5.0.0-rc3 (2025-11-26)
+----------------------
 
 ### User-Specific Data Sync
 
@@ -12,8 +12,12 @@ ObjectBox C and C++ API Changelog
 
 ### New supported platform: Windows ARM64
 
-* Besides x86 and x64, ObjectBox now also supports Windows ARM64
+* Besides x86 and x64, ObjectBox for Windows now also supports ARM64
 * Use git tag `v5.0.0-rc2` for CMake (the arm64 libs were added to the 5.0.0-rc release in a later commit)
+
+### Sync
+
+* Sync clients may now provide certificate locations for SSL(TLS) connections
 
 ### Fixes
 
@@ -21,6 +25,7 @@ ObjectBox C and C++ API Changelog
 * In-memory with WAL file: improved error handling
 * Safeguard against undefined behavior by panicking in rare illegal usage patterns that are not recoverable.
   I.e. deleting a (write) transaction in a non-owner thread cannot be safely handled in any other way.
+* Various small improvements and updates under the hood.
 
 ### Examples
 
@@ -28,6 +33,7 @@ ObjectBox C and C++ API Changelog
 * Add a convenient `build.sh` script to each example that works the same way across examples,
   e.g. `./build.sh run` to build and run the example in one step
 * Make sources more readable (refactorings, added additional comments)
+* The Task sync example moved to [ObjectBox Sync Examples](https://github.com/objectbox/objectbox-sync-examples)
 
 4.3.1 (2025-07-28)
 ------------------

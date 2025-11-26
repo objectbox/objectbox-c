@@ -55,7 +55,7 @@ else ()
 
     function(defineObjectBoxLib VARIANT)
         # Configuration updated for each release
-        set(DL_VERSION 5.0.0-rc)
+        set(DL_VERSION 5.0.0-rc3)
 
         # Platform detection and other setup
         set(DL_URL https://github.com/objectbox/objectbox-c/releases/download)

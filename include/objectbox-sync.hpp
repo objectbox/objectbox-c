@@ -289,16 +289,26 @@ class SyncClient : public Closable {
     using Guard = std::lock_guard<std::mutex>;
 
 public:
-    /// Creates a sync client associated with the given store and options.
+    /// Creates a sync client associated with the given store and options
+    /// (server URLs, credentials, optional certificate paths).
     /// This does not initiate any connection attempts yet: call start() to do so.
-    explicit SyncClient(Store& store, const std::vector<std::string>& serverUrls, const SyncCredentials& creds)
+    SyncClient(Store& store, const std::vector<std::string>& serverUrls, const SyncCredentials& creds,
+               const std::vector<std::string>& certPaths = {})
         : store_(store) {
         std::vector<const char*> urlPointers;  // Convert serverUrls to a vector of C strings for the C API
         urlPointers.reserve(serverUrls.size());
         for (const std::string& serverUrl : serverUrls) {
             urlPointers.emplace_back(serverUrl.c_str());
         }
-        cSync_ = obx_sync_urls(store.cPtr(), urlPointers.data(), urlPointers.size());
+
+        std::vector<const char*> certPointers;
+        certPointers.reserve(certPaths.size());
+        for (const std::string& certPath : certPaths) {
+            certPointers.emplace_back(certPath.c_str());
+        }
+
+        cSync_ = obx_sync_certs(store.cPtr(), urlPointers.data(), urlPointers.size(), certPointers.data(),
+                                certPointers.size());
 
         internal::checkPtrOrThrow(cSync_, "Could not initialize sync client");
         try {
@@ -309,13 +319,17 @@ public:
         }
     }
 
-    explicit SyncClient(Store& store, const std::string& serverUrl, const SyncCredentials& creds)
-        : SyncClient(store, std::vector<std::string>{serverUrl}, creds) {}
+    /// Creates a sync client associated with the given store and options
+    /// (server URL, credentials, optional certificate paths).
+    /// This does not initiate any connection attempts yet: call start() to do so.
+    SyncClient(Store& store, const std::string& serverUrl, const SyncCredentials& creds,
+               const std::vector<std::string>& certPaths = {})
+        : SyncClient(store, std::vector<std::string>{serverUrl}, creds, certPaths) {}
 
     /// Creates a sync client associated with the given store and options.
     /// This does not initiate any connection attempts yet: call start() to do so.
     /// @param cSync an initialized sync client. You must NOT call obx_sync_close() yourself anymore.
-    explicit SyncClient(Store& store, OBX_sync* cSync) : store_(store), cSync_(cSync) {
+    SyncClient(Store& store, OBX_sync* cSync) : store_(store), cSync_(cSync) {
         OBX_VERIFY_STATE(obx_has_feature(OBXFeature_Sync));
         OBX_VERIFY_ARGUMENT(cSync);
     }
@@ -434,7 +448,7 @@ public:
     /// Triggers a reconnection attempt immediately.
     /// By default, an increasing backoff interval is used for reconnection attempts.
     /// But sometimes the user of this API has additional knowledge and can initiate a reconnection attempt sooner.
-    bool triggerReconnect() { return internal::checkSuccessOrThrow(obx_sync_trigger_reconnect(cPtr())); }
+    bool triggerReconnect() const { return internal::checkSuccessOrThrow(obx_sync_trigger_reconnect(cPtr())); }
 
     /// Sets the interval in which the client sends "heartbeat" messages to the server, keeping the connection alive.
     /// To detect disconnects early on the client side, you can also use heartbeats with a smaller interval.
@@ -492,7 +506,7 @@ public:
     ///       While this will still be fast, avoid calling this function excessively.
     ///       2) the result follows transaction view semantics, thus it may not always match the actual value.
     /// @return the number of messages in the outgoing queue
-    uint64_t outgoingMessageCount(uint64_t limit = 0) {
+    uint64_t outgoingMessageCount(uint64_t limit = 0) const {
         uint64_t result;
         internal::checkErrOrThrow(obx_sync_outgoing_message_count(cPtr(), limit, &result));
         return result;
@@ -970,39 +984,39 @@ public:
     void stop() { internal::checkErrOrThrow(obx_sync_server_stop(cPtr())); }
 
     /// Returns if this sync server is running
-    bool isRunning() { return obx_sync_server_running(cPtr()); }
+    bool isRunning() const { return obx_sync_server_running(cPtr()); }
 
     /// Returns a URL this server is listening on, including the bound port (see port().
-    std::string url() {
+    std::string url() const {
         return internal::checkedPtrOrThrow(obx_sync_server_url(cPtr()), "Can't get SyncServer bound URL");
     }
 
     /// Returns a port this server listens on. This is especially useful if the bindUri given to the constructor
     /// specified "0" port (i.e. automatic assignment).
-    uint16_t port() {
+    uint16_t port() const {
         uint16_t result = obx_sync_server_port(cPtr());
         if (result == 0) internal::throwLastError();
         return result;
     }
 
     /// Returns the number of clients connected to this server.
-    uint64_t connections() { return obx_sync_server_connections(cPtr()); }
+    uint64_t connections() const { return obx_sync_server_connections(cPtr()); }
 
     /// Get server runtime statistics.
-    std::string statsString(bool includeZeroValues = true) {
+    std::string statsString(bool includeZeroValues = true) const {
         const char* serverStatsString = obx_sync_server_stats_string(cPtr(), includeZeroValues);
         return internal::checkedPtrOrThrow(serverStatsString, "Can't get SyncServer stats string");
     }
 
     /// Get u64 value for sync server statistics.
-    uint64_t statsValueU64(OBXSyncServerStats counterType) {
+    uint64_t statsValueU64(OBXSyncServerStats counterType) const {
         uint64_t value;
         internal::checkErrOrThrow(obx_sync_server_stats_u64(cPtr(), counterType, &value));
         return value;
     }
 
     /// Get double value for sync server statistics.
-    double statsValueF64(OBXSyncServerStats counterType) {
+    double statsValueF64(OBXSyncServerStats counterType) const {
         double value;
         internal::checkErrOrThrow(obx_sync_server_stats_f64(cPtr(), counterType, &value));
         return value;
@@ -1188,7 +1202,7 @@ public:
     /// @param messageSize the number of message bytes.
     /// @returns true if the given message could be forwarded.
     /// @returns false in case the operation encountered an issue.
-    inline bool forwardReceivedMessageFromServer(const void* messageData, size_t messageSize) {
+    bool forwardReceivedMessageFromServer(const void* messageData, size_t messageSize) {
         obx_err err = obx_custom_msg_client_receive_message_from_server(id_, messageData, messageSize);
         return internal::checkSuccessOrThrow(err);
     }
@@ -1198,7 +1212,7 @@ public:
     /// @returns true if the client was in a state that allowed the transition to the given state.
     /// @returns false if no state transition was possible from the current to the given state (e.g. an internal
     /// "closed" state was reached).
-    inline bool forwardState(OBXCustomMsgClientState state) {
+    bool forwardState(OBXCustomMsgClientState state) {
         obx_err err = obx_custom_msg_client_set_state(id_, state);
         return internal::checkSuccessOrThrow(err);
     }
@@ -1206,7 +1220,7 @@ public:
     /// The custom msg client may call this if it has knowledge when a reconnection attempt makes sense,
     /// for example, when the network becomes available.
     /// @returns true if a reconnect was actually triggered and false otherwise.
-    inline bool triggerReconnect() {
+    bool triggerReconnect() const {
         obx_err err = obx_custom_msg_client_trigger_reconnect(id_);
         return internal::checkSuccessOrThrow(err);
     }

@@ -112,7 +112,7 @@ else ()
     if(NOT DEFINED ObjectBoxGenerator_CMAKE_VERSION OR ObjectBoxGenerator_CMAKE_VERSION STREQUAL "")
         # The default version is a specific version that "matches" the ObjectBox library version of this repo.
         # Nevertheless, it's often possible to use a newer Generator version as breaking changes are infrequent.
-        set(ObjectBoxGenerator_CMAKE_VERSION "v4.0.0")
+        set(ObjectBoxGenerator_CMAKE_VERSION "v5.0.0-rc")
     endif ()
     set(OBX_GEN_DL_URL https://raw.githubusercontent.com/objectbox/objectbox-generator/${ObjectBoxGenerator_CMAKE_VERSION}/cmake/FindObjectBoxGenerator.cmake)
 

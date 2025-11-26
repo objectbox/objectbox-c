@@ -14,7 +14,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ ubuntu-latest, macos-latest, macos-26, windows-latest, windows-11-arm ]
+        # Available runners: https://docs.github.com/en/actions/reference/runners/github-hosted-runners
+        os: [ ubuntu-latest, ubuntu-24.04-arm, macos-latest, macos-26, windows-latest, windows-11-arm ]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,7 +30,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ ubuntu-latest, macos-latest, macos-26, windows-latest, windows-11-arm ]
+        os: [ ubuntu-latest, ubuntu-24.04-arm, macos-latest, macos-26, windows-latest, windows-11-arm ]
     steps:
       - name: Checkout
         uses: actions/checkout@v4

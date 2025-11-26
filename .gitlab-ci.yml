@@ -17,6 +17,11 @@ build:rocky8:
   extends: build:ubuntu18
   image: objectboxio/cbuild-rocky8:2023-08-23
 
+build:linux-aarch64:
+  extends: build:ubuntu18
+  tags: [ armv8, shell, linux ]
+  image: null
+
 build:examples:
   stage: build
   tags: [x64, docker ]
@@ -39,3 +44,8 @@ build:examples-ubuntu24:
   extends: build:examples
   image: objectboxio/cbuild-ubuntu24.04:2025-09-30
   before_script: []
+
+build:examples-linux-aarch64:
+  extends: build:examples
+  tags: [ armv8, shell, linux ]
+  image: null

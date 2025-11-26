@@ -39,7 +39,7 @@ This is the simplest way on Linux and macOS from the command line.
 * Typically, you `cd` into an example directory and run `./build.sh` (each example has its own `build.sh`).
 * Once the build is done, you can run the example: the executable is in the `build/` directory and its path is printed to the console during the build.
 * Run `./build.sh run` to build and run the example in one step.
-* The `./build.sh` also accepts `--clear` as the first argument to clear the build directory before building.
+* The `./build.sh` also accepts `--clean` as the first argument to clear the build directory before building.
 
 ### Build within IDEs (CMake)
 

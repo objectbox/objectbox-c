@@ -21,8 +21,13 @@ if (NOT TARGET objectbox) # Using "if" in case a (potential) parent project alre
     )
     FetchContent_MakeAvailable(objectbox)
 
-    find_package(ObjectBoxGenerator REQUIRED)
-    add_obx_schema(TARGET ${PROJECT_NAME} SCHEMA_FILES tasklist.fbs INSOURCE)
+    if ((WIN32 OR CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
+            AND CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "^(arm|aarch64|ARM|AARCH64)")
+        message(STATUS "Skipping ObjectBox Generator integration, which is not yet supported on this platform (${CMAKE_HOST_SYSTEM_NAME}-${CMAKE_HOST_SYSTEM_PROCESSOR})")
+    else ()
+        find_package(ObjectBoxGenerator REQUIRED)
+        add_obx_schema(TARGET ${PROJECT_NAME} SCHEMA_FILES tasklist.fbs INSOURCE)
+    endif ()
 endif ()
 
 target_link_libraries(${PROJECT_NAME} objectbox)

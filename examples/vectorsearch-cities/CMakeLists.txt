@@ -17,7 +17,7 @@ if (NOT TARGET objectbox) # Using "if" in case a (potential) parent project alre
     FetchContent_Declare(
             objectbox
             GIT_REPOSITORY https://github.com/objectbox/objectbox-c.git
-            GIT_TAG v5.0.0-rc4 # For latest versions, check https://github.com/objectbox/objectbox-c/releases
+            GIT_TAG v5.0.0 # For latest versions, check https://github.com/objectbox/objectbox-c/releases
     )
     FetchContent_MakeAvailable(objectbox)
 

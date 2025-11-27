@@ -1,7 +1,7 @@
 ObjectBox C and C++ API Changelog
 =================================
 
-5.0.0-rc3 (2025-11-26)
+5.0.0 (2025-11-27)
 ----------------------
 
 ### User-Specific Data Sync
@@ -13,11 +13,10 @@ ObjectBox C and C++ API Changelog
 ### New supported platform: Windows ARM64
 
 * Besides x86 and x64, ObjectBox for Windows now also supports ARM64
-* Use git tag `v5.0.0-rc2` for CMake (the arm64 libs were added to the 5.0.0-rc release in a later commit)
 
 ### Sync
 
-* Sync clients may now provide certificate locations for SSL(TLS) connections
+* Sync clients may now provide certificate locations for SSL (TLS) connections
 
 ### Fixes
 

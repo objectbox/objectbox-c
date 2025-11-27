@@ -27,7 +27,7 @@
           "flags": 8,
           "hnswParams": {
             "dimensions": 2,
-            "distance-type": "Euclidean"
+            "distance-type": "Geo"
           }
         }
       ]

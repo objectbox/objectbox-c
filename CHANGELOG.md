@@ -1,8 +1,28 @@
 ObjectBox C and C++ API Changelog
 =================================
 
+5.1.0 (2026-01-19)
+------------------
+* Fix for deleting transactions in non-owner threads with open relation cursors
+* Admin: the Schema view now shows if external name of types and properties if configured
+* Admin: the Schema view now shows the type as text (e.g. "String") instead of the internal type ID
+* Internal updates
+
+### Sync
+
+* New Sync protocol V8: using new clients also require a server update
+* Remove-operations with object content for Sync filters (optional setting; sync flag)
+* Introduce options based Sync client creation (new C API)
+* Add DebugLogTxLogs sync flag to log TX log processing on the client side
+* Add SkipInvalidTxOps sync flag to skip invalid operations in a TX log on the client side;
+  errors are logged and the TX is only partially applied.
+* Remove superfluous sync listener triggers when sync filters "report updates" (SKIP_TX)
+* Sync clients compress earlier: reduces disk storage for outgoing data
+* Reworked SSL certificates for Apple platforms
+* Removed support for older Sync protocol versions before 2024-09; protocol V5+ is now required
+
 5.0.0 (2025-11-27)
-----------------------
+------------------
 
 ### User-Specific Data Sync
 

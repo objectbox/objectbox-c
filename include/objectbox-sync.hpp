@@ -21,7 +21,7 @@
 #include "objectbox-sync.h"
 #include "objectbox.hpp"
 
-static_assert(OBX_VERSION_MAJOR == 5 && OBX_VERSION_MINOR == 0 && OBX_VERSION_PATCH == 0,  // NOLINT
+static_assert(OBX_VERSION_MAJOR == 5 && OBX_VERSION_MINOR == 1 && OBX_VERSION_PATCH == 0,  // NOLINT
               "Versions of objectbox.h and objectbox-sync.hpp files do not match, please update");
 
 namespace obx {
@@ -502,7 +502,7 @@ public:
     bool cancelUpdates() { return internal::checkSuccessOrThrow(obx_sync_updates_cancel(cPtr())); }
 
     /// Count the number of messages in the outgoing queue, i.e. those waiting to be sent to the server.
-    /// Note: This calls uses a (read) transaction internally: 1) it's not just a "cheap" return of a single number.
+    /// Note: This call uses a (read) transaction internally: 1) it's not just a "cheap" return of a single number.
     ///       While this will still be fast, avoid calling this function excessively.
     ///       2) the result follows transaction view semantics, thus it may not always match the actual value.
     /// @return the number of messages in the outgoing queue

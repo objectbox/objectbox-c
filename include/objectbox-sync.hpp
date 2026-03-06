@@ -21,7 +21,7 @@
 #include "objectbox-sync.h"
 #include "objectbox.hpp"
 
-static_assert(OBX_VERSION_MAJOR == 5 && OBX_VERSION_MINOR == 1 && OBX_VERSION_PATCH == 0,  // NOLINT
+static_assert(OBX_VERSION_MAJOR == 5 && OBX_VERSION_MINOR == 2 && OBX_VERSION_PATCH == 0,  // NOLINT
               "Versions of objectbox.h and objectbox-sync.hpp files do not match, please update");
 
 namespace obx {
@@ -29,6 +29,7 @@ namespace obx {
 /// Credentials for logging into a Sync Server that are passed to SyncClient.
 /// Typically created using a factory method, e.g. `SyncCredentials::none()` or `SyncCredentials::jwtIdToken(...)`.
 class SyncCredentials {
+    friend SyncBuilder;
     friend SyncClient;
     friend SyncServer;
     OBXSyncCredentialsType type_;
@@ -289,44 +290,7 @@ class SyncClient : public Closable {
     using Guard = std::lock_guard<std::mutex>;
 
 public:
-    /// Creates a sync client associated with the given store and options
-    /// (server URLs, credentials, optional certificate paths).
-    /// This does not initiate any connection attempts yet: call start() to do so.
-    SyncClient(Store& store, const std::vector<std::string>& serverUrls, const SyncCredentials& creds,
-               const std::vector<std::string>& certPaths = {})
-        : store_(store) {
-        std::vector<const char*> urlPointers;  // Convert serverUrls to a vector of C strings for the C API
-        urlPointers.reserve(serverUrls.size());
-        for (const std::string& serverUrl : serverUrls) {
-            urlPointers.emplace_back(serverUrl.c_str());
-        }
-
-        std::vector<const char*> certPointers;
-        certPointers.reserve(certPaths.size());
-        for (const std::string& certPath : certPaths) {
-            certPointers.emplace_back(certPath.c_str());
-        }
-
-        cSync_ = obx_sync_certs(store.cPtr(), urlPointers.data(), urlPointers.size(), certPointers.data(),
-                                certPointers.size());
-
-        internal::checkPtrOrThrow(cSync_, "Could not initialize sync client");
-        try {
-            setCredentials(creds);
-        } catch (...) {
-            closeNonVirtual();  // free native resources before throwing
-            throw;
-        }
-    }
-
-    /// Creates a sync client associated with the given store and options
-    /// (server URL, credentials, optional certificate paths).
-    /// This does not initiate any connection attempts yet: call start() to do so.
-    SyncClient(Store& store, const std::string& serverUrl, const SyncCredentials& creds,
-               const std::vector<std::string>& certPaths = {})
-        : SyncClient(store, std::vector<std::string>{serverUrl}, creds, certPaths) {}
-
-    /// Creates a sync client associated with the given store and options.
+    /// Creates a sync client associated with the given store and an existing C sync client.
     /// This does not initiate any connection attempts yet: call start() to do so.
     /// @param cSync an initialized sync client. You must NOT call obx_sync_close() yourself anymore.
     SyncClient(Store& store, OBX_sync* cSync) : store_(store), cSync_(cSync) {
@@ -411,9 +375,13 @@ public:
         internal::checkErrOrThrow(err);
     }
 
-    /// Adds or replaces a sync filter variable value to the sync client.
-    /// Client filter variables can be used in server-side sync filters to filter out objects that do not match the
-    /// filter. Filter variables must be added before login, e.g. before obx_sync_start() or setting credentials.
+    /// Adds or replaces a sync filter variable value for the given name to the sync client.
+    /// Eventually existing values for the same name are replaced.
+    /// Client filter variables can be used in server-side sync filters to filter out objects that do not match the filter.
+    /// Filter variables can be set in two states:
+    ///  1) Added before login, e.g. before obx_sync_start() or setting credentials (no "apply" activation required).
+    ///  2) After a login, updates to sync filter variables are staged and are "pending" until
+    ///     obx_sync_filter_variables_apply() is called.
     /// @param name non-NULL name of the filter variable
     /// @param value non-NULL value of the filter variable
     void putFilterVariable(const char* name, const char* value) {
@@ -444,6 +412,14 @@ public:
 
     /// Removes a previously added sync filter variable value.
     void removeFilterVariable(const std::string& name) { removeFilterVariable(name.c_str()); }
+
+    /// Applies all pending filter variable updates (from put/remove filter variables calls).
+    /// If the client is connected, sends the updated variables to the server.
+    /// If the client is not connected, the updated variables will be included in the next login message.
+    void applyFilterVariables() {
+        obx_err err = obx_sync_filter_variables_apply(cPtr());
+        internal::checkErrOrThrow(err);
+    }
 
     /// Triggers a reconnection attempt immediately.
     /// By default, an increasing backoff interval is used for reconnection attempts.
@@ -797,24 +773,28 @@ protected:
     }
 };
 
+class SyncBuilder;
+
 /// <a href="https://objectbox.io/sync/">ObjectBox Sync</a> makes data available on other devices.
 /// Start building a sync client using client() and connect to a remote server.
 class Sync {
 public:
     static bool isAvailable() { return obx_has_feature(OBXFeature_Sync); }
 
+    /// @deprecated Use Sync::client(store).url(serverUrl).credentials(creds).build() instead.
     /// Creates a sync client associated with the given store and configures it with the given options.
     /// This does not initiate any connection attempts yet: call SyncClient::start() to do so.
     /// Before start(), you can still configure some aspects of the sync client, e.g. its "request update" mode.
     /// @note While you may not interact with SyncClient directly after start(), you need to hold on to the object.
     ///       Make sure the SyncClient is not destroyed and thus synchronization can keep running in the background.
     static std::shared_ptr<SyncClient> client(Store& store, const std::string& serverUrl,
-                                              const SyncCredentials& creds) {
-        std::lock_guard<std::mutex> lock(store.syncClientMutex_);
-        if (store.syncClient_) throw IllegalStateException("Only one sync client can be active for a store");
-        store.syncClient_.reset(new SyncClient(store, serverUrl, creds));
-        return std::static_pointer_cast<SyncClient>(store.syncClient_);
-    }
+                                              const SyncCredentials& creds);
+
+    /// Creates a SyncBuilder to configure and build a sync client for the given store.
+    /// Use the builder's fluent API to add URLs, certificates, credentials, and flags, then call build().
+    /// @param store the store to sync; a store can only have one sync client associated with it.
+    /// @return a SyncBuilder instance for configuring the sync client
+    static SyncBuilder client(Store& store);
 
     /// Adopts an existing OBX_sync* sync client, taking ownership of the pointer.
     /// @param cSync an initialized sync client. You must NOT call obx_sync_close() yourself anymore.
@@ -825,6 +805,91 @@ public:
         return std::static_pointer_cast<SyncClient>(store.syncClient_);
     }
 };
+
+/// Builder for creating and configuring a SyncClient.
+/// Use Sync::client(store) to obtain a builder, then configure it using the fluent API and call build().
+class SyncBuilder {
+    friend class Sync;
+
+    Store& store_;
+    OBX_sync_options* opt_;
+    SyncCredentials creds_{SyncCredentials::none()};
+    bool credsSet_ = false;
+
+    explicit SyncBuilder(Store& store) : store_(store), opt_(obx_sync_opt(store.cPtr())) {
+        internal::checkPtrOrThrow(opt_, "Could not create sync options");
+    }
+
+public:
+    /// Can't be copied, single owner of C resources is required (to avoid double-free during destruction)
+    SyncBuilder(const SyncBuilder&) = delete;
+
+    SyncBuilder(SyncBuilder&& source) noexcept
+        : store_(source.store_), opt_(source.opt_), creds_(std::move(source.creds_)), credsSet_(source.credsSet_) {
+        source.opt_ = nullptr;
+    }
+
+    ~SyncBuilder() {
+        if (opt_) obx_sync_opt_free(opt_);
+    }
+
+    /// Adds a server URL; at least one URL must be added before calling build().
+    /// Passing multiple URLs allows high availability and load balancing (i.e. using a ObjectBox Sync Server Cluster).
+    /// A random URL is selected for each connection attempt.
+    SyncBuilder& url(const std::string& url) {
+        internal::checkErrOrThrow(obx_sync_opt_add_url(opt_, url.c_str()));
+        return *this;
+    }
+
+    /// Adds an SSL certificate path.
+    /// This allows to pass SSL certificate paths referring to the local file system.
+    /// Example use cases are using self-signed certificates in a local development environment and custom CAs.
+    SyncBuilder& certificatePath(const std::string& path) {
+        internal::checkErrOrThrow(obx_sync_opt_add_cert_path(opt_, path.c_str()));
+        return *this;
+    }
+
+    /// Sets sync flags to adjust sync behavior; see OBXSyncFlags for available flags.
+    /// Combine multiple flags using bitwise OR.
+    SyncBuilder& flags(uint32_t flags) {
+        internal::checkErrOrThrow(obx_sync_opt_flags(opt_, flags));
+        return *this;
+    }
+
+    /// Sets credentials to authenticate the client with the server.
+    /// Alternatively, you can set credentials on the SyncClient after build().
+    SyncBuilder& credentials(const SyncCredentials& creds) {
+        creds_ = creds;
+        credsSet_ = true;
+        return *this;
+    }
+
+    /// Builds and returns the configured SyncClient.
+    /// This does not initiate any connection attempts yet: call SyncClient::start() to do so.
+    /// Before start(), you should configure credentials via credentials() or SyncClient::setCredentials().
+    /// @note The builder is consumed by this call and must not be used afterwards.
+    /// @throws IllegalStateException if a sync client is already active for the store
+    std::shared_ptr<SyncClient> build() {
+        OBX_VERIFY_STATE(opt_);
+        std::lock_guard<std::mutex> lock(store_.syncClientMutex_);
+        if (store_.syncClient_) throw IllegalStateException("Only one sync client can be active for a store");
+        OBX_sync* cSync = obx_sync_create(opt_);
+        opt_ = nullptr;  // obx_sync_create() always frees the options
+        internal::checkPtrOrThrow(cSync, "Could not create sync client");
+        store_.syncClient_ = std::make_shared<SyncClient>(store_, cSync);
+        if (credsSet_) {
+            static_cast<SyncClient*>(store_.syncClient_.get())->setCredentials(creds_);
+        }
+        return std::static_pointer_cast<SyncClient>(store_.syncClient_);
+    }
+};
+
+inline SyncBuilder Sync::client(Store& store) { return SyncBuilder(store); }
+
+inline std::shared_ptr<SyncClient> Sync::client(Store& store, const std::string& serverUrl,
+                                                const SyncCredentials& creds) {
+    return SyncBuilder(store).url(serverUrl).credentials(creds).build();
+}
 
 inline std::shared_ptr<SyncClient> Store::syncClient() {
     std::lock_guard<std::mutex> lock(syncClientMutex_);

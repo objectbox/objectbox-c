@@ -3,6 +3,21 @@
 ObjectBox C and C++ API Changelog
 =================================
 
+5.2.0 (2026-03-06)
+------------------
+* Admin: new "Counts and Sizes" view (via Status page) to give an overview over all types their object counts and sizes
+* Admin: refresh button for the data view
+* Admin: fix reload via browser to stay on the page
+* Admin: schema view to display flags as text
+* (Minor) performance improvements of HNSW vector search on Linux ARM targets
+
+### Sync
+
+* Sync protocol version 10
+* Update client sync filters variables when online
+* Clients report errors to the server
+* Add OBXSyncFlags_SkipInvalidTxOps
+ 
 5.1.0 (2026-01-19)
 ------------------
 * Fix for deleting transactions in non-owner threads with open relation cursors

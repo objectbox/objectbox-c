@@ -36,7 +36,7 @@
 #include <optional>
 #endif
 
-static_assert(OBX_VERSION_MAJOR == 5 && OBX_VERSION_MINOR == 1 && OBX_VERSION_PATCH == 0,  // NOLINT
+static_assert(OBX_VERSION_MAJOR == 5 && OBX_VERSION_MINOR == 2 && OBX_VERSION_PATCH == 0,  // NOLINT
               "Versions of objectbox.h and objectbox.hpp files do not match, please update");
 
 #ifdef __clang__
@@ -313,6 +313,7 @@ class AsyncBox;
 class Transaction;
 
 class Sync;
+class SyncBuilder;
 class SyncClient;
 class SyncServer;
 
@@ -680,6 +681,7 @@ class Store {
     std::mutex syncClientMutex_;
 
     friend Sync;
+    friend SyncBuilder;
     friend SyncClient;
     friend SyncServer;
 

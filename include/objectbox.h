@@ -52,7 +52,7 @@ extern "C" {
 /// When using ObjectBox as a dynamic library, you should verify that a compatible version was linked using
 /// obx_version() or obx_version_is_at_least().
 #define OBX_VERSION_MAJOR 5
-#define OBX_VERSION_MINOR 1
+#define OBX_VERSION_MINOR 2
 #define OBX_VERSION_PATCH 0  // values >= 100 are reserved for dev releases leading to the next minor/major increase
 
 //----------------------------------------------
@@ -112,6 +112,11 @@ OBX_C_API bool obx_version_is_at_least(int major, int minor, int patch);
 /// Thus, only use for information purposes.
 /// @see obx_version() and obx_version_is_at_least() for integer based versions
 OBX_C_API const char* obx_version_string(void);
+
+/// Return the (runtime) version of the library to be printed.
+/// The format is "YYYY-MM-DD" (e.g. "2026-02-16") and thus can be compared lexicographically.
+/// @see obx_version() and obx_version_is_at_least() for integer based versions.
+OBX_C_API const char* obx_version_date_string(void);
 
 /// Return the version of the ObjectBox core to be printed (currently also contains a version date and features).
 /// The format may change in any future release; only use for information purposes.

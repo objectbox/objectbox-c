@@ -1,6 +1,26 @@
 ObjectBox C and C++ API Changelog
 =================================
 
+5.3.0 (2026-03-23)
+------------------
+* Change log level at runtime, i.e. `obx_log_level_set()`/`obx_log_level_get()`
+* New log level "trace" for most internal details
+* Log level "verbose" can now be enabled (debug log builds only)
+* **Breaking:** `OBXLogLevel` enum values changed; recompile with new header if you used these
+  (previously 10/20/30/40/50 for Verbose..Error, now 0-10 matching the runtime log level).
+* Admin: Status tab "Count and Sizes" now only counts all objects on click to preserve resources
+* Admin: Status tab "Count and Sizes" now has a sum row at the bottom
+* Admin: Status tab "System and Info" now shows additional information
+  * Process memory / RSS
+  * Database size and free disk size
+  * CPU counts and loads
+
+### Sync
+
+* Conflict resolution via sync clock and sync precedence (allows last win with custom conflict resolution)
+* Fix bad Sync client state after multiple full sync messages were interrupted
+* Fix adding indexes to Sync types
+
 5.2.0 (2026-03-06)
 ------------------
 * Admin: new "Counts and Sizes" view (via Status page) to give an overview over all types their object counts and sizes

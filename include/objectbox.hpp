@@ -36,7 +36,7 @@
 #include <optional>
 #endif
 
-static_assert(OBX_VERSION_MAJOR == 5 && OBX_VERSION_MINOR == 2 && OBX_VERSION_PATCH == 0,  // NOLINT
+static_assert(OBX_VERSION_MAJOR == 5 && OBX_VERSION_MINOR == 3 && OBX_VERSION_PATCH == 0,  // NOLINT
               "Versions of objectbox.h and objectbox.hpp files do not match, please update");
 
 #ifdef __clang__
@@ -720,6 +720,13 @@ public:
     /// Otherwise, it always returns false for standard release builds
     /// (or true if you are having a special debug version).
     static bool debugLogEnabled() { return obx_debug_log_enabled(); }
+
+    /// Sets the runtime log level for ObjectBox internals.
+    /// @throws Exception if the call fails (e.g. level out of range).
+    static void logLevelSet(OBXLogLevel level) { internal::checkErrOrThrow(obx_log_level_set(level)); }
+
+    /// Gets the current runtime log level for ObjectBox internals.
+    static OBXLogLevel logLevelGet() { return obx_log_level_get(); }
 
     /// Delete the store files from the given directory
     static void removeDbFiles(const std::string& directory) {

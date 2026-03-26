@@ -1,8 +1,16 @@
 ObjectBox C and C++ API Changelog
 =================================
 
+5.3.1 (2026-03-26)
+------------------
+* Critical fix for sync clock handling without preset clock values (null)
+* Helper functions to extract timestamps from sync clock values 
+
 5.3.0 (2026-03-23)
 ------------------
+**Warning:** Do not use sync clock properties in this version; use 5.3.1 instead!
+When putting an object with a sync clock that had no value set (e.g., "null"), it triggered a severe bug.  
+
 * Change log level at runtime, i.e. `obx_log_level_set()`/`obx_log_level_get()`
 * New log level "trace" for most internal details
 * Log level "verbose" can now be enabled (debug log builds only)

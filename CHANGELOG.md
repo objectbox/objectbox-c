@@ -1,6 +1,11 @@
 ObjectBox C and C++ API Changelog
 =================================
 
+5.3.2 (2026-05-05)
+------------------
+* Fixed a corner case with "unique replace on conflict" and absent (e.g. null) sync clock value
+* Internal fixes and improvements
+
 5.3.1 (2026-03-26)
 ------------------
 * Critical fix for sync clock handling without preset clock values (null)

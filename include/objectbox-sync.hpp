@@ -21,7 +21,7 @@
 #include "objectbox-sync.h"
 #include "objectbox.hpp"
 
-static_assert(OBX_VERSION_MAJOR == 5 && OBX_VERSION_MINOR == 3 && OBX_VERSION_PATCH == 1,  // NOLINT
+static_assert(OBX_VERSION_MAJOR == 5 && OBX_VERSION_MINOR == 3 && OBX_VERSION_PATCH == 2,  // NOLINT
               "Versions of objectbox.h and objectbox-sync.hpp files do not match, please update");
 
 namespace obx {
@@ -377,8 +377,8 @@ public:
 
     /// Adds or replaces a sync filter variable value for the given name to the sync client.
     /// Eventually existing values for the same name are replaced.
-    /// Client filter variables can be used in server-side sync filters to filter out objects that do not match the filter.
-    /// Filter variables can be set in two states:
+    /// Client filter variables can be used in server-side sync filters to filter out objects that do not match the
+    /// filter. Filter variables can be set in two states:
     ///  1) Added before login, e.g. before obx_sync_start() or setting credentials (no "apply" activation required).
     ///  2) After a login, updates to sync filter variables are staged and are "pending" until
     ///     obx_sync_filter_variables_apply() is called.
@@ -430,7 +430,7 @@ public:
     /// To detect disconnects early on the client side, you can also use heartbeats with a smaller interval.
     /// Use with caution, setting a low value (i.e. sending heartbeat very often) may cause an excessive network usage
     /// as well as high server load (when there are many connected clients).
-    /// @param interval default value is 25 minutes (1 500 000 milliseconds), which is also the allowed maximum.
+    /// @param interval the default value is between 4 and 5 minutes.
     /// @throws IllegalArgumentException if value is not in the allowed range, e.g. larger than the maximum (1 500 000).
     void setHeartbeatInterval(std::chrono::milliseconds interval) {
         internal::checkErrOrThrow(obx_sync_heartbeat_interval(cPtr(), static_cast<uint64_t>(interval.count())));
@@ -787,8 +787,7 @@ public:
     /// Before start(), you can still configure some aspects of the sync client, e.g. its "request update" mode.
     /// @note While you may not interact with SyncClient directly after start(), you need to hold on to the object.
     ///       Make sure the SyncClient is not destroyed and thus synchronization can keep running in the background.
-    static std::shared_ptr<SyncClient> client(Store& store, const std::string& serverUrl,
-                                              const SyncCredentials& creds);
+    static std::shared_ptr<SyncClient> client(Store& store, const std::string& serverUrl, const SyncCredentials& creds);
 
     /// Creates a SyncBuilder to configure and build a sync client for the given store.
     /// Use the builder's fluent API to add URLs, certificates, credentials, and flags, then call build().
@@ -1039,6 +1038,11 @@ public:
     ///        If zero, the deletion stops already stops when reaching the max size (or lower).
     void setHistoryMaxSizeKb(uint64_t maxSizeKb, uint64_t targetSizeKb = 0) {
         internal::checkErrOrThrow(obx_sync_server_history_max_size_in_kb(cPtr(), maxSizeKb, targetSizeKb));
+    }
+
+    /// Enables schema version validation for clients during login; must be called before start().
+    void clientSchemaValidationStrict() {
+        internal::checkErrOrThrow(obx_sync_server_client_schema_validation_strict(cPtr()));
     }
 
     /// Once the sync server is configured, you can "start" it to start accepting client connections.

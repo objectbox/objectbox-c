@@ -21,7 +21,7 @@
 #include "objectbox-sync.h"
 #include "objectbox.hpp"
 
-static_assert(OBX_VERSION_MAJOR == 5 && OBX_VERSION_MINOR == 3 && OBX_VERSION_PATCH == 2,  // NOLINT
+static_assert(OBX_VERSION_MAJOR == 6 && OBX_VERSION_MINOR == 0 && OBX_VERSION_PATCH == 0,  // NOLINT
               "Versions of objectbox.h and objectbox-sync.hpp files do not match, please update");
 
 namespace obx {
@@ -265,6 +265,171 @@ public:
     /// @param id an optional (pass 0 if you don't need it) value that the application can use identify the object
     void add(const std::string& object, uint64_t id = 0) {
         add(OBXSyncObjectType_String, object.c_str(), object.size(), id);
+    }
+};
+
+/// Configuration for a peer-to-peer mesh sync. Build it, register at least one network, then attach it to a
+/// sync client via SyncBuilder::mesh(). Wraps OBX_mesh_options.
+class MeshOptions {
+    friend class SyncBuilder;
+
+    OBX_mesh_options* cOpt_;
+
+    OBX_mesh_options* release() {
+        OBX_VERIFY_STATE(cOpt_);
+        OBX_mesh_options* result = cOpt_;
+        cOpt_ = nullptr;
+        return result;
+    }
+
+public:
+    /// Creates mesh options for the given mesh network identifier (required); nodes with different IDs ignore each
+    /// other. Register at least one network via registerNetwork() before attaching via SyncBuilder::mesh().
+    explicit MeshOptions(const std::string& meshId) : cOpt_(obx_mesh_opt(meshId.c_str())) {
+        internal::checkPtrOrThrow(cOpt_, "Could not create mesh options");
+    }
+
+    MeshOptions(MeshOptions&& source) noexcept : cOpt_(source.cOpt_) { source.cOpt_ = nullptr; }
+
+    /// Can't be copied, single owner of C resources is required (to avoid double-free during destruction)
+    MeshOptions(const MeshOptions&) = delete;
+
+    virtual ~MeshOptions() {
+        if (cOpt_) obx_mesh_opt_free(cOpt_);
+    }
+
+    /// Registers a mesh network (transport) implementation; networks are platform-specific (e.g. Android Nearby)
+    /// and created natively (typically by an ObjectBox platform SDK).
+    /// @param cppMeshNetworkSharedPtr a pointer to a std::shared_ptr<objectbox::sync::MeshNetworkInterface>;
+    ///        the shared_ptr is copied internally (the caller keeps ownership of its own shared_ptr).
+    MeshOptions& registerNetwork(void* cppMeshNetworkSharedPtr) {
+        internal::checkErrOrThrow(obx_mesh_opt_network_internal(cOpt_, cppMeshNetworkSharedPtr));
+        return *this;
+    }
+
+    /// Sets the max number of simultaneous connections a peer can have to other peers (default: 3).
+    /// The default of 3 already provides mesh resilience through alternative paths.
+    /// 4 may give better fault tolerance, but at the cost of more radio activity (check if connections are stable).
+    /// Values above 4 are not recommended, as this causes more overhead without improving mesh quality significantly.
+    /// 2 is typically not recommended, unless you run into severe radio limitations with your devices and 3 connections.
+    /// 1 would be a rare special case if you only want to create pairs, not a mesh.
+    MeshOptions& maxConnectionCount(size_t count) {
+        internal::checkErrOrThrow(obx_mesh_opt_max_connection_count(cOpt_, count));
+        return *this;
+    }
+
+    /// Sets the backoff time in milliseconds before retrying a failed connection (default: 10000).
+    MeshOptions& backoffMillis(int32_t millis) {
+        internal::checkErrOrThrow(obx_mesh_opt_backoff_millis(cOpt_, millis));
+        return *this;
+    }
+
+    /// Sets the backoff time in milliseconds between peer evictions (default: 30000).
+    /// When an incoming peer has 0 connections but we are full, we evict one existing peer to make room.
+    /// This backoff prevents frequent evictions: after evicting, we wait this long before evicting again.
+    MeshOptions& evictionBackoffMillis(int32_t millis) {
+        internal::checkErrOrThrow(obx_mesh_opt_eviction_backoff_millis(cOpt_, millis));
+        return *this;
+    }
+
+    /// Sets the seed for the random engine; 0 means use the current time (default: 0).
+    MeshOptions& randomSeed(int64_t seed) {
+        internal::checkErrOrThrow(obx_mesh_opt_random_seed(cOpt_, seed));
+        return *this;
+    }
+
+    /// Sets the timeout in milliseconds for a TX request from a peer before retrying from another (default: 5000).
+    MeshOptions& requestTimeoutMillis(int32_t millis) {
+        internal::checkErrOrThrow(obx_mesh_opt_request_timeout_millis(cOpt_, millis));
+        return *this;
+    }
+
+    /// Sets the delay in milliseconds before advertising starts after the mesh sync starts (default: 2000).
+    /// Discovery always starts immediately; advertising is delayed to "stretch out" radio activity.
+    /// Google Nearby tends to be error-prone when doing "everything at once", so spreading helps.
+    MeshOptions& advertisingDelayMillis(int32_t millis) {
+        internal::checkErrOrThrow(obx_mesh_opt_advertising_delay_millis(cOpt_, millis));
+        return *this;
+    }
+
+    /// Sets the minimum delay in milliseconds between two outgoing connection attempts (default: 1000).
+    /// Also applied after starting discovery and after starting advertising, so the first connection attempt
+    /// is delayed too. Used to "stretch out" connecting instead of firing all connection requests at once.
+    MeshOptions& connectDelayMillis(int32_t millis) {
+        internal::checkErrOrThrow(obx_mesh_opt_connect_delay_millis(cOpt_, millis));
+        return *this;
+    }
+
+    /// Sets the duration in seconds of the initial discovery phase (default: 30; 0 means never stop by time).
+    /// Typically longer than the standard duration to give a fresh node a better chance to find peers.
+    MeshOptions& initialDiscoveryDurationSeconds(int32_t seconds) {
+        internal::checkErrOrThrow(obx_mesh_opt_initial_discovery_duration_seconds(cOpt_, seconds));
+        return *this;
+    }
+
+    /// Sets the duration in seconds of a standard (non-initial) discovery phase (default: 15; 0 means never stop).
+    /// After this time (or once fully connected), discovery is stopped to reduce radio contention.
+    MeshOptions& discoveryDurationSeconds(int32_t seconds) {
+        internal::checkErrOrThrow(obx_mesh_opt_discovery_duration_seconds(cOpt_, seconds));
+        return *this;
+    }
+
+    /// Sets the pause in seconds between two discovery phases (default: 45).
+    /// After discovery is stopped, we wait this long before starting the next phase (unless still fully connected).
+    MeshOptions& discoveryPauseSeconds(int32_t seconds) {
+        internal::checkErrOrThrow(obx_mesh_opt_discovery_pause_seconds(cOpt_, seconds));
+        return *this;
+    }
+
+    /// Sets the random +/- jitter in seconds applied to the discovery pause (default: 15; must be <= pause).
+    /// De-synchronizes multiple devices (avoids lock-step discovery phases across nodes). 0 disables jitter.
+    MeshOptions& discoveryPauseJitterSeconds(int32_t seconds) {
+        internal::checkErrOrThrow(obx_mesh_opt_discovery_pause_jitter_seconds(cOpt_, seconds));
+        return *this;
+    }
+
+    /// Sets the soft cap in KB for the total TX log payload batched into a single TxLogData message (default: 100).
+    /// When a peer requests multiple TX logs, we add logs until adding the next one would exceed this limit.
+    /// The default is kept moderate so a single message stays acceptable even on a slow Bluetooth fallback connection
+    /// (e.g. ~1 Mbps: 100 KB ~ 0.8s of transfer). A single TX log larger than this is still sent on its own.
+    MeshOptions& txLogBatchSizeKb(int32_t sizeKb) {
+        internal::checkErrOrThrow(obx_mesh_opt_tx_log_batch_size_kb(cOpt_, sizeKb));
+        return *this;
+    }
+
+    /// Sets the max number of TX logs to batch into a single TxLogData message (default: 1000).
+    /// Must be in the range (0, 100000] (the latter being the hard upper limit).
+    MeshOptions& txLogBatchMaxCount(int32_t count) {
+        internal::checkErrOrThrow(obx_mesh_opt_tx_log_batch_max_count(cOpt_, count));
+        return *this;
+    }
+};
+
+/// A running peer-to-peer mesh sync attached to a SyncClient (via SyncBuilder::mesh()).
+/// This is a non-owning, lightweight view obtained from SyncClient::mesh(); it is valid while the client is open.
+class Mesh {
+    OBX_mesh* cMesh_;
+
+public:
+    explicit Mesh(OBX_mesh* cMesh) : cMesh_(cMesh) {}
+
+    /// Whether a mesh sync is actually attached to the sync client (false if none was configured).
+    bool isAttached() const { return cMesh_ != nullptr; }
+
+    /// The current mesh sync state.
+    OBXMeshState state() const { return obx_mesh_state(cMesh_); }
+
+    /// A human-readable string for the current mesh sync state (e.g. "Discovering").
+    const char* stateString() const { return obx_mesh_state_string(cMesh_); }
+
+    /// The number of currently connected peers.
+    size_t connectedPeerCount() const { return obx_mesh_connected_peer_count(cMesh_); }
+
+    /// Gets a u64 value for the given mesh sync statistics counter (useful for testing and diagnostics).
+    uint64_t statsU64(OBXMeshStats counterType) const {
+        uint64_t value;
+        internal::checkErrOrThrow(obx_mesh_stats_u64(cMesh_, counterType, &value));
+        return value;
     }
 };
 
@@ -704,6 +869,10 @@ public:
         return value;
     }
 
+    /// Returns the peer-to-peer mesh sync attached to this client (configured via SyncBuilder::mesh()).
+    /// Check Mesh::isAttached() to verify a mesh sync is actually present.
+    Mesh mesh() const { return Mesh(obx_sync_mesh(cPtr())); }
+
 protected:
     OBX_sync* cPtr() const {
         OBX_sync* ptr = cSync_;
@@ -860,6 +1029,14 @@ public:
     SyncBuilder& credentials(const SyncCredentials& creds) {
         creds_ = creds;
         credsSet_ = true;
+        return *this;
+    }
+
+    /// Attaches a peer-to-peer mesh sync configuration; the mesh sync starts/stops together with the client.
+    /// Access the running mesh via SyncClient::mesh() after build().
+    /// @note The given mesh options are consumed by this call and must not be used afterwards.
+    SyncBuilder& mesh(MeshOptions&& meshOptions) {
+        internal::checkErrOrThrow(obx_sync_opt_mesh(opt_, meshOptions.release()));
         return *this;
     }
 

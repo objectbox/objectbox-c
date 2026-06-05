@@ -1,6 +1,11 @@
 ObjectBox C and C++ API Changelog
 =================================
 
+6.0.0-preview1 (2026-06-05)
+---------------------------
+* Peer-to-peer mesh sync (Android-only for now)
+* Android: changed Logcat tag from "Box" to "ObjectBox"
+
 5.3.2 (2026-05-05)
 ------------------
 * Fixed a corner case with "unique replace on conflict" and absent (e.g. null) sync clock value

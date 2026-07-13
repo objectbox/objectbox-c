@@ -143,8 +143,6 @@ public:
     virtual void errorOccurred(OBXSyncError error) noexcept = 0;
 };
 
-/// List
-
 /// Listens to sync time information events on a sync client.
 class SyncClientTimeListener {
 public:
@@ -311,7 +309,7 @@ public:
     /// The default of 3 already provides mesh resilience through alternative paths.
     /// 4 may give better fault tolerance, but at the cost of more radio activity (check if connections are stable).
     /// Values above 4 are not recommended, as this causes more overhead without improving mesh quality significantly.
-    /// 2 is typically not recommended, unless you run into severe radio limitations with your devices and 3 connections.
+    /// 2 is typically not recommended, unless you run into radio limitations with 3 connections on your devices.
     /// 1 would be a rare special case if you only want to create pairs, not a mesh.
     MeshOptions& maxConnectionCount(size_t count) {
         internal::checkErrOrThrow(obx_mesh_opt_max_connection_count(cOpt_, count));
@@ -349,6 +347,22 @@ public:
     /// Google Nearby tends to be error-prone when doing "everything at once", so spreading helps.
     MeshOptions& advertisingDelayMillis(int32_t millis) {
         internal::checkErrOrThrow(obx_mesh_opt_advertising_delay_millis(cOpt_, millis));
+        return *this;
+    }
+
+    /// Sets the base delay in milliseconds before retrying advertising after a network failed to start it
+    /// (default: 5000). A network may fail to start advertising (e.g. missing permissions); advertising is then
+    /// retried with exponential backoff (doubling up to advertisingRetryMaxMillis()) because permissions may be
+    /// granted later at runtime. Must be positive.
+    MeshOptions& advertisingRetryMillis(int32_t millis) {
+        internal::checkErrOrThrow(obx_mesh_opt_advertising_retry_millis(cOpt_, millis));
+        return *this;
+    }
+
+    /// Sets the upper bound in milliseconds for the advertising retry backoff (default: 60000).
+    /// Must be >= the base delay set via advertisingRetryMillis().
+    MeshOptions& advertisingRetryMaxMillis(int32_t millis) {
+        internal::checkErrOrThrow(obx_mesh_opt_advertising_retry_max_millis(cOpt_, millis));
         return *this;
     }
 
@@ -403,6 +417,12 @@ public:
         internal::checkErrOrThrow(obx_mesh_opt_tx_log_batch_max_count(cOpt_, count));
         return *this;
     }
+
+    /// Sets the maximum age in seconds of TX logs kept in the local mesh cache (default: 8 hours).
+    MeshOptions& txLogMaxAgeSeconds(int64_t seconds) {
+        internal::checkErrOrThrow(obx_mesh_opt_tx_log_max_age_seconds(cOpt_, seconds));
+        return *this;
+    }
 };
 
 /// A running peer-to-peer mesh sync attached to a SyncClient (via SyncBuilder::mesh()).
@@ -424,6 +444,12 @@ public:
 
     /// The number of currently connected peers.
     size_t connectedPeerCount() const { return obx_mesh_connected_peer_count(cMesh_); }
+
+    /// Requests an immediate retry of the network radios: advertising (bypassing the current retry backoff) and
+    /// discovery (restarting the current phase). Call this when conditions that may have prevented the radios from
+    /// starting have changed, e.g. the user just granted the required permissions. Thread-safe; the actual retry
+    /// happens on the mesh sync thread shortly after.
+    void retryNetworks() { internal::checkErrOrThrow(obx_mesh_retry_networks(cMesh_)); }
 
     /// Gets a u64 value for the given mesh sync statistics counter (useful for testing and diagnostics).
     uint64_t statsU64(OBXMeshStats counterType) const {
@@ -554,11 +580,8 @@ public:
         internal::checkErrOrThrow(err);
     }
 
-    /// Adds or replaces a sync filter variable value to the sync client.
-    /// Client filter variables can be used in server-side sync filters to filter out objects that do not match the
-    /// filter. Filter variables must be added before login, e.g. before obx_sync_start() or setting credentials.
-    /// @param name name of the filter variable
-    /// @param value value of the filter variable
+    /// Adds or replaces a sync filter variable value for the given name to the sync client;
+    /// see putFilterVariable(const char*, const char*) for details.
     void putFilterVariable(const std::string& name, const std::string& value) {
         putFilterVariable(name.c_str(), value.c_str());
     }
@@ -571,7 +594,7 @@ public:
 
     /// Removes a previously added sync filter variable value.
     void removeFilterVariable(const char* name) {
-        obx_err err = obx_sync_filter_variables_remove_all(cPtr());
+        obx_err err = obx_sync_filter_variables_remove(cPtr(), name);
         internal::checkErrOrThrow(err);
     }
 
@@ -791,7 +814,7 @@ public:
             obx_sync_listener_error(
                 cPtr(),
                 [](void* arg, OBXSyncError error) { static_cast<SyncClientErrorListener*>(arg)->errorOccurred(error); },
-                listeners_.change.get());
+                listeners_.error.get());
         }
     }
 
@@ -950,14 +973,6 @@ class Sync {
 public:
     static bool isAvailable() { return obx_has_feature(OBXFeature_Sync); }
 
-    /// @deprecated Use Sync::client(store).url(serverUrl).credentials(creds).build() instead.
-    /// Creates a sync client associated with the given store and configures it with the given options.
-    /// This does not initiate any connection attempts yet: call SyncClient::start() to do so.
-    /// Before start(), you can still configure some aspects of the sync client, e.g. its "request update" mode.
-    /// @note While you may not interact with SyncClient directly after start(), you need to hold on to the object.
-    ///       Make sure the SyncClient is not destroyed and thus synchronization can keep running in the background.
-    static std::shared_ptr<SyncClient> client(Store& store, const std::string& serverUrl, const SyncCredentials& creds);
-
     /// Creates a SyncBuilder to configure and build a sync client for the given store.
     /// Use the builder's fluent API to add URLs, certificates, credentials, and flags, then call build().
     /// @param store the store to sync; a store can only have one sync client associated with it.
@@ -1061,11 +1076,6 @@ public:
 };
 
 inline SyncBuilder Sync::client(Store& store) { return SyncBuilder(store); }
-
-inline std::shared_ptr<SyncClient> Sync::client(Store& store, const std::string& serverUrl,
-                                                const SyncCredentials& creds) {
-    return SyncBuilder(store).url(serverUrl).credentials(creds).build();
-}
 
 inline std::shared_ptr<SyncClient> Store::syncClient() {
     std::lock_guard<std::mutex> lock(syncClientMutex_);

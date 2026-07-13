@@ -1,10 +1,35 @@
 ObjectBox C and C++ API Changelog
 =================================
 
-6.0.0-preview1 (2026-06-05)
----------------------------
-* Peer-to-peer mesh sync (Android-only for now)
-* Android: changed Logcat tag from "Box" to "ObjectBox"
+6.0.0-beta (2026-07-13)
+-----------------------
+Lead feature: P2P Mesh Sync
+
+* WebAssembly (WASM): the library is now built as part of releases;
+  also updated the Emscripten toolchain, reducing the binary size significantly
+* Admin: modernized user interface based on Vue.js 3 and Material Design 3
+* Admin: optimized pages now loading faster
+* Android: log messages now use the logcat tag "ObjectBox" (previously "Box")OK
+* **Breaking:** removed previously deprecated functions from the C API:
+  * `obx_debug_log()` and `obx_debug_log_enabled()`: use `obx_log_level_set()` and `obx_log_level_get()` instead
+  * `obx_qb_contains_key_value_string()`: use `obx_qb_equals_key_value_string()` instead
+  * `obx_qb_any_equals_string()`: use `obx_qb_contains_element_string()` instead
+* **Breaking:** removed previously deprecated members from the C++ API:
+  * `Options(OBX_model*)` constructor: use `Options().model(model)` instead
+  * `Store::debugLog()` and `Store::debugLogEnabled()`: use `Store::logLevelSet()` and `Store::logLevelGet()` instead
+  * String vector query condition `contains()`: use `containsElement()` instead
+  * `Sync::client(store, url, credentials)`: use the builder instead,
+    e.g. `Sync::client(store).url(url).credentials(credentials).build()`
+* Internal fixes and improvements
+
+### Sync
+
+* New Mesh Sync API: peer-to-peer (P2P) synchronization between sync clients without a central server
+  * C: configure via `obx_mesh_opt_*()` and `obx_sync_opt_mesh()`;
+    access the running mesh via `obx_sync_mesh()` and `obx_mesh_*()`
+  * C++: new `MeshOptions` and `Mesh` classes, `SyncBuilder::mesh()` and `SyncClient::mesh()`
+* C++: fixed `SyncClient::removeFilterVariable()` removing all filter variables instead of the given one
+* C++: fixed registering a `SyncClientErrorListener` (the error callback was bound to the wrong listener object)
 
 5.3.2 (2026-05-05)
 ------------------

@@ -348,9 +348,6 @@ public:
         internal::checkPtrOrThrow(opt, "Could not create store options");
     }
 
-    /// @deprecated is this used by generator?
-    explicit Options(OBX_model* model) : Options() { this->model(model); }
-
     ~Options() { obx_opt_free(opt); }
 
     /// Set the model on the options. The default is no model.
@@ -397,7 +394,7 @@ public:
         return *this;
     }
 
-    /// Gets the option for "max DB size"; this is either the default, or, the value set by maxDataSizeInKb().
+    /// Gets the option for "max data size"; this is either the default, or, the value set by maxDataSizeInKb().
     uint64_t getMaxDataSizeInKb() const { return obx_opt_get_max_data_size_in_kb(opt); }
 
     /// Set the file mode on the options. The default is 0644 (unix-style)
@@ -708,18 +705,6 @@ public:
 
     /// Return the version of the library as ints. Pointers may be null
     static void getVersion(int* major, int* minor, int* patch) { obx_version(major, minor, patch); }
-
-    /// Enable (or disable) debug logging for ObjectBox internals.
-    /// This requires a version of the library with the DebugLog feature.
-    /// You can check if the feature is available with obx_has_feature(OBXFeature_DebugLog).
-    static void debugLog(bool enabled) { internal::checkErrOrThrow(obx_debug_log(enabled)); }
-
-    /// Checks if debug logs are enabled for ObjectBox internals.
-    /// This depends on the availability of the DebugLog feature.
-    /// If the feature is available, it returns the current state, which is adjustable via obx_debug_log().
-    /// Otherwise, it always returns false for standard release builds
-    /// (or true if you are having a special debug version).
-    static bool debugLogEnabled() { return obx_debug_log_enabled(); }
 
     /// Sets the runtime log level for ObjectBox internals.
     /// @throws Exception if the call fails (e.g. level out of range).
@@ -1469,9 +1454,6 @@ protected:
         } else if (PropertyType == OBXPropertyType_StringVector) {
             if (op_ == QueryOp::ContainsElement) {
                 return obx_qb_contains_element_string(cqb, propId_, value_.c_str(), caseSensitive_);
-            } else if (op_ == QueryOp::Contains) {
-                // Deprecated
-                return obx_qb_any_equals_string(cqb, propId_, value_.c_str(), caseSensitive_);
             }
         }
         throwInvalidOperation();
@@ -1852,16 +1834,6 @@ template <typename EntityT>
 class Property<EntityT, OBXPropertyType_StringVector> : public PropertyTypeless {
 public:
     explicit constexpr Property(obx_schema_id id) noexcept : PropertyTypeless(id) {}
-
-    /// @deprecated Please use containsElement() instead
-    QCStringForStringVector contains(std::string&& value, bool caseSensitive = true) const {
-        return {this->id_, QueryOp::Contains, caseSensitive, std::move(value)};
-    }
-
-    /// @deprecated Please use containsElement() instead
-    QCStringForStringVector contains(const std::string& value, bool caseSensitive = true) const {
-        return contains(std::string(value), caseSensitive);
-    }
 
     QCStringForStringVector containsElement(std::string&& value, bool caseSensitive = true) const {
         return {this->id_, QueryOp::ContainsElement, caseSensitive, std::move(value)};

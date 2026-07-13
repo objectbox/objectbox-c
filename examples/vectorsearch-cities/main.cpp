@@ -61,7 +61,8 @@ int main(int argc, char* argv[]) {
     }
 
     // Hint: create_obx_model() is provided by objectbox-model.h, which is a (pre)generated source file
-    Options options(create_obx_model());
+    Options options;
+    options.model(create_obx_model());
 
     if (int err = processArgs(argc, argv, options)) {
         return err;

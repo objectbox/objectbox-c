@@ -1694,6 +1694,36 @@ public:
         return notIn(std::vector<int64_t>(values));
     }
 
+    template <OBXPropertyType T = ValueT,
+              typename = enable_if_t<T == OBXPropertyType_Long || T == OBXPropertyType_Relation>>
+    QCInt64Array in(std::vector<obx_id>&& values) const {
+        static_assert(sizeof(obx_id) == sizeof(int64_t), "obx_id must have the same size as int64_t");
+        std::vector<int64_t> valuesSigned(values.size());
+        std::copy(values.begin(), values.end(), valuesSigned.begin());
+        return in(std::move(valuesSigned));
+    }
+
+    template <OBXPropertyType T = ValueT,
+              typename = enable_if_t<T == OBXPropertyType_Long || T == OBXPropertyType_Relation>>
+    QCInt64Array in(const std::vector<obx_id>& values) const {
+        return in(std::vector<obx_id>(values));
+    }
+
+    template <OBXPropertyType T = ValueT,
+              typename = enable_if_t<T == OBXPropertyType_Long || T == OBXPropertyType_Relation>>
+    QCInt64Array notIn(std::vector<obx_id>&& values) const {
+        static_assert(sizeof(obx_id) == sizeof(int64_t), "obx_id must have the same size as int64_t");
+        std::vector<int64_t> valuesSigned(values.size());
+        std::copy(values.begin(), values.end(), valuesSigned.begin());
+        return notIn(std::move(valuesSigned));
+    }
+
+    template <OBXPropertyType T = ValueT,
+              typename = enable_if_t<T == OBXPropertyType_Long || T == OBXPropertyType_Relation>>
+    QCInt64Array notIn(const std::vector<obx_id>& values) const {
+        return notIn(std::vector<obx_id>(values));
+    }
+
     template <OBXPropertyType T = ValueT, typename = EnableIfFloating<T>>
     QCDouble lessThan(double value) const {
         return {this->id_, QueryOp::Less, value};
@@ -2468,6 +2498,16 @@ public:
             obx_query_param_int64s(cQuery_, entityId<PropertyEntityT>(), property.id(), values.data(), values.size());
         internal::checkErrOrThrow(err);
         return *this;
+    }
+
+    /// Change previously set condition value in an existing query - this improves reusability of the query object.
+    template <typename PropertyEntityT, OBXPropertyType PropertyType,
+              typename = enable_if_t<PropertyType == OBXPropertyType_Long || PropertyType == OBXPropertyType_Relation>>
+    Query& setParameter(Property<PropertyEntityT, PropertyType> property, const std::vector<obx_id>& values) {
+        static_assert(sizeof(obx_id) == sizeof(int64_t), "obx_id must have the same size as int64_t");
+        std::vector<int64_t> valuesSigned(values.size());
+        std::copy(values.begin(), values.end(), valuesSigned.begin());
+        return setParameter(property, valuesSigned);
     }
 
     /// Change previously set condition value in an existing query - this improves reusability of the query object.

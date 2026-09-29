@@ -3,7 +3,7 @@
 ObjectBox C and C++ API Changelog
 =================================
 
-6.0.0-beta (2026-07-13)
+6.0.0-beta2 (2026-09-29)
 -----------------------
 Lead feature: P2P Mesh Sync
 
@@ -11,7 +11,7 @@ Lead feature: P2P Mesh Sync
   also updated the Emscripten toolchain, reducing the binary size significantly
 * Admin: modernized user interface based on Vue.js 3 and Material Design 3
 * Admin: optimized pages now loading faster
-* Android: log messages now use the logcat tag "ObjectBox" (previously "Box")OK
+* Android: log messages now use the logcat tag "ObjectBox" (previously "Box")
 * **Breaking:** removed previously deprecated functions from the C API:
   * `obx_debug_log()` and `obx_debug_log_enabled()`: use `obx_log_level_set()` and `obx_log_level_get()` instead
   * `obx_qb_contains_key_value_string()`: use `obx_qb_equals_key_value_string()` instead
@@ -22,6 +22,9 @@ Lead feature: P2P Mesh Sync
   * String vector query condition `contains()`: use `containsElement()` instead
   * `Sync::client(store, url, credentials)`: use the builder instead,
     e.g. `Sync::client(store).url(url).credentials(credentials).build()`
+* Closing a store with an open transaction created in the same thread is more robust now:
+  the transaction gets aborted with a warning instead of entering an infinite loop state
+  (note that this is still a programming error and should be avoided in the first place) 
 * Internal fixes and improvements
 
 ### Sync
@@ -30,6 +33,7 @@ Lead feature: P2P Mesh Sync
   * C: configure via `obx_mesh_opt_*()` and `obx_sync_opt_mesh()`;
     access the running mesh via `obx_sync_mesh()` and `obx_mesh_*()`
   * C++: new `MeshOptions` and `Mesh` classes, `SyncBuilder::mesh()` and `SyncClient::mesh()`
+  * Allows other ObjectBox bindings like Swift to integrate their platform to implement mesh sync
 * C++: fixed `SyncClient::removeFilterVariable()` removing all filter variables instead of the given one
 * C++: fixed registering a `SyncClientErrorListener` (the error callback was bound to the wrong listener object)
 

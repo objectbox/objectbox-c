@@ -2,23 +2,19 @@ ObjectBox Embedded Database for C and C++
 =========================================
 [ObjectBox](https://objectbox.io) is a lightweight yet powerful on-device database for objects and vectors.
 The out-of-the-box [Data Sync](https://objectbox.io/sync/) keeps data in sync across devices and any kind of backend/cloud reliably for occasionally connected devices.
-ObjectBox Data Persistence and Data Sync follows an offline-first approach and can be used on-premise as well as with a cloud setup.
-
-*********************************************************************************************************************************
-Jobs: We're looking for a [C++ Developer](https://objectbox.io/jobs/objectbox-senior-c-plusplus-developer/) with a ❤️ for performant code
-*********************************************************************************************************************************
+ObjectBox Data Persistence and Data Sync follow an offline-first approach and can be used on-premise as well as with a cloud setup.
 
 This is the **ObjectBox runtime library** to run ObjectBox as an embedded database in your C or C++ application.
 
 Here's a C++ example that inserts a `Task` data object (a plain user defined `struct`) into the database:
 ```c++
 obx::Box<Task> box(store);
-box.put({.text = "Buy milk"}); 
+box.put({.text = "Buy milk"});
 ```
 
 See [ObjectBox C and C++ docs](https://cpp.objectbox.io/) for API details.
 
-**Latest version: 6.0.0-beta** (2026-07-13).
+**Latest version: 6.0.0-beta2** (2026-09-29).
 See [changelog](CHANGELOG.md) for more details.
 
 ## Table of Contents:
@@ -27,18 +23,18 @@ See [changelog](CHANGELOG.md) for more details.
 - [C++ API](#c-api)
 - [Examples](#examples)
 - [Documentation](#documentation)
-- [Current state / Changelog](#changelogupdating)
+- [Changelog/Updating](#changelogupdating)
 - [Supported platforms](#supported-platforms)
 - [C API as the Foundation for Higher Languages](#c-api-as-the-foundation-for-higher-languages)
 - [Other languages/bindings](#other-languagesbindings)
-- [How can I help ObjectBox?](#how-can-i-help-objectbox)
+- [Follow ObjectBox](#follow-objectbox)
 - [License](#license)
 
 Feature Highlights
 ------------------
 🧠 **First on-device vector database:** easily manage vector data and perform fast vector search\
-🏁 **High performance** on restricted devices, like IoT gateways, micro controllers, ECUs etc.\
-🪂 **Resourceful** with minimal CPU, power and Memory usage for maximum flexibility and sustainability\
+🏁 **High performance** on any device, from microcontrollers to servers\
+🪂 **Resourceful** with minimal CPU, power and memory usage for maximum flexibility and sustainability\
 🔗 **Relations:** object links / relationships are built-in\
 💻 **Multiplatform:** Linux, Windows, Android, iOS, macOS
 
@@ -78,9 +74,9 @@ Head over to [ObjectBox C and C++ installation docs](https://cpp.objectbox.io/in
 C++ API
 -------
 The C++ API provides a higher level `class`-based interface built on top of the C API.
-A central class is `obx::Box`, which provides most database operations. 
+A central class is `obx::Box`, which provides most database operations.
 Note that to use the `obx::Box` class, you also need the [ObjectBox Generator](https://github.com/objectbox/objectbox-generator) to generate binding code.
-Find more details how to use it the [Getting started](https://cpp.objectbox.io/getting-started) section of the docs.
+Find more details how to use it in the [Getting started](https://cpp.objectbox.io/getting-started) section of the docs.
 
 Examples
 --------
@@ -98,17 +94,16 @@ Changelog/Updating
 Please refer to the **[Changelog](CHANGELOG.md)** for the latest updates and changes.
 We are (mostly) following [Semantic Versioning](https://semver.org/).
 
-If you update from a previous version, please also check the changelog.
-
 Supported platforms
 -------------------
 * Linux 64-bit
-* Linux ARMv6hf (e.g. Raspberry PI Zero)
-* Linux ARMv7hf (e.g. Raspberry PI 3/4)
-* Linux ARMv8/AArch64 (e.g. Raspberry PI 3/4 with a 64-bit OS like Ubuntu)
+* Linux ARMv6hf (e.g. Raspberry Pi Zero)
+* Linux ARMv7hf (e.g. Raspberry Pi 3/4)
+* Linux ARMv8/AArch64 (e.g. Raspberry Pi 3/4 with a 64-bit OS like Ubuntu)
 * macOS 64-bit
 * Windows 32-bit
 * Windows 64-bit
+* WebAssembly (WASM)
 
 Note that e.g. our Android SDK (part of [another repo](https://github.com/objectbox/objectbox-java))
 also exposes the C API, so you can use ObjectBox in your Android NDK projects.
@@ -129,22 +124,11 @@ Besides C/C++, ObjectBox also offers:
 * [ObjectBox Swift](https://github.com/objectbox/objectbox-swift): build fast mobile apps for iOS (and macOS)
 * [ObjectBox Dart/Flutter](https://github.com/objectbox/objectbox-dart): cross-platform for mobile and desktop apps
 * [ObjectBox Go](https://github.com/objectbox/objectbox-go): great for data-driven tools and embedded server applications
+* [ObjectBox Python](https://github.com/objectbox/objectbox-python): on-device vector and object database for Python apps
 
-
-How can I help ObjectBox?
----------------------------
-Let us know what you love, what you don’t, what do you want to see next?
-
-**We're looking forward to receiving your comments and requests:**
-
-- Add [GitHub issues](https://github.com/ObjectBox/objectbox-java/issues)
-- Upvote issues you find important by hitting the 👍/+1 reaction button
-- Drop us a line via [@ObjectBox_io](https://twitter.com/ObjectBox_io/)
-- ⭐ us, if you like what you see
-
-Thank you! 🙏
-
-Keep in touch: For general news on ObjectBox, [check our blog](https://objectbox.io/blog)!
+Follow ObjectBox
+----------------
+Follow ObjectBox at [GitHub](https://github.com/ObjectBox/), [@ObjectBox_io at X](https://x.com/ObjectBox_io/) and at our [blog](https://objectbox.io/blog)!
 
 License
 -------

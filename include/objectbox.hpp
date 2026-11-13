@@ -803,6 +803,28 @@ public:
 
     BoxTypeless boxTypeless(const char* entityName);
 
+    /// Initializes the HNSW index of a property with late init (OBXHnswFlags_LateInit) with the given parameters, a
+    /// finished FlatBuffers HnswParams table; see obx_store_hnsw_index_init().
+    /// @param outObjectCount optional: receives the number of indexed or removed objects
+    /// @returns what was done as OBXHnswInitResult bit flags (0: nothing)
+    uint32_t initHnswIndex(obx_schema_id entityId, obx_schema_id propertyId, const void* hnswParams, size_t size,
+                           OBXHnswInitMode mode = OBXHnswInitMode_KeepObjects, uint64_t* outObjectCount = nullptr) {
+        uint32_t result = 0;
+        internal::checkErrOrThrow(
+            obx_store_hnsw_index_init(cPtr(), entityId, propertyId, hnswParams, size, mode, &result, outObjectCount));
+        return result;
+    }
+
+    /// The HNSW index parameters in effect as a FlatBuffers HnswParams table; see obx_store_hnsw_index_params().
+    std::vector<uint8_t> getHnswIndexParams(obx_schema_id entityId, obx_schema_id propertyId) {
+        OBX_bytes* bytes = obx_store_hnsw_index_params(cPtr(), entityId, propertyId);
+        internal::checkPtrOrThrow(bytes, "Could not get the HNSW index parameters");
+        const uint8_t* data = static_cast<const uint8_t*>(bytes->data);
+        std::vector<uint8_t> result(data, data + bytes->size);
+        obx_bytes_free(bytes);
+        return result;
+    }
+
     /// Await all (including future) async submissions to be completed (the async queue becomes empty).
     /// @returns true if all submissions were completed (or async processing was not started)
     /// @returns false if shutting down or an error occurred
@@ -1520,17 +1542,17 @@ protected:
 class QCVectorF32 : public QC {
     const std::vector<float> value_;
     const float* valuePtr_ = nullptr;
-    const size_t maxResultCount_ = 0;
+    const size_t resultCount_ = 0;
 
 public:
     /// @param value the vector with an element count that matches the dimension given for the property.
-    QCVectorF32(obx_schema_id propId, QueryOp op, std::vector<float>&& value, size_t maxResultCount)
-        : QC(propId, op), value_(std::move(value)), maxResultCount_(maxResultCount) {}
+    QCVectorF32(obx_schema_id propId, QueryOp op, std::vector<float>&& value, size_t resultCount)
+        : QC(propId, op), value_(std::move(value)), resultCount_(resultCount) {}
 
     /// Does not copy the value; uses the reference
     /// @param value the vector with an element count that matches the dimension given for the property.
-    QCVectorF32(obx_schema_id propId, QueryOp op, const float* value, size_t maxResultCount)
-        : QC(propId, op), valuePtr_(value), maxResultCount_(maxResultCount) {}
+    QCVectorF32(obx_schema_id propId, QueryOp op, const float* value, size_t resultCount)
+        : QC(propId, op), valuePtr_(value), resultCount_(resultCount) {}
 
 protected:
     std::unique_ptr<QueryCondition> copyAsPtr() const override { return QueryCondition::copyAsPtr(*this); };
@@ -1538,7 +1560,7 @@ protected:
     obx_qb_cond applyTo(OBX_query_builder* cqb, bool /*isRoot*/) const override {
         if (op_ == QueryOp::NearestNeighbors) {
             const float* data = valuePtr_ ? valuePtr_ : value_.data();
-            return obx_qb_nearest_neighbors_f32(cqb, propId_, data, maxResultCount_);
+            return obx_qb_nearest_neighbors_f32(cqb, propId_, data, resultCount_);
         }
         throwInvalidOperation();
     }
@@ -2013,16 +2035,53 @@ public:
     /// This requires the vector property to have a HNSW index.
     /// @param vectorPropertyId the vector property ID of the entity
     /// @param queryVector the query vector; its dimensions should be at least the dimensions of the vector property.
-    /// @param maxResultCount maximum number of objects to return by the ANN condition.
-    ///        Hint: it can also be used as the "ef" HNSW parameter to increase the search quality in combination with a
-    ///        query limit.
-    ///        For example, use 100 here with a query limit of 10 to have 10 results that are of potentially better
-    ///        quality than just passing in 10 here (quality/performance tradeoff).
+    /// @param resultCount maximum number of objects to return by the ANN condition; typically the query limit.
+    ///        The search explores a multiple of this count, as defined by the search level (see OBXHnswSearchLevel).
+    ///        To trade search speed for quality, use a search level (vectorSearchLevel() when building the query or
+    ///        Query::setParameterSearchLevel() per search) instead of a larger count with a query limit (the way
+    ///        before 6.0; now, the search explores a multiple of it).
     QueryBuilderBase& nearestNeighborsFloat32(obx_schema_id vectorPropertyId, const float* queryVector,
-                                              size_t maxResultCount) {
+                                              size_t resultCount) {
         obx_qb_cond condition =
-            obx_qb_nearest_neighbors_f32(cQueryBuilder_, vectorPropertyId, queryVector, maxResultCount);
+            obx_qb_nearest_neighbors_f32(cQueryBuilder_, vectorPropertyId, queryVector, resultCount);
         if (condition == 0) internal::throwLastError();
+        return *this;
+    }
+
+    /// Modifies the nearest neighbor condition added last (it must be the last condition): sets its search level,
+    /// the preferred way to trade search speed for quality; it replaces the oversample and rescore parameters, so call
+    /// it before their vector modifiers. See obx_qb_vector_search_level().
+    QueryBuilderBase& vectorSearchLevel(OBXHnswSearchLevel level) {
+        internal::checkErrOrThrow(obx_qb_vector_search_level(cQueryBuilder_, level));
+        return *this;
+    }
+
+    /// Modifies the nearest neighbor condition added last (power users; prefer a search level): sets how many
+    /// candidates the search explores per result; see obx_qb_vector_oversample_factor().
+    QueryBuilderBase& vectorOversampleFactor(float value) {
+        internal::checkErrOrThrow(obx_qb_vector_oversample_factor(cQueryBuilder_, value));
+        return *this;
+    }
+
+    /// Modifies the nearest neighbor condition added last (power users; prefer a search level): with quantization,
+    /// rescores value * result count candidates (turns rescoring on); see obx_qb_vector_rescore_factor().
+    QueryBuilderBase& vectorRescoreFactor(float value) {
+        internal::checkErrOrThrow(obx_qb_vector_rescore_factor(cQueryBuilder_, value));
+        return *this;
+    }
+
+    /// Modifies the nearest neighbor condition added last (power users): with other conditions, brute force among at
+    /// most value candidates; overrides the index's value (0: uses it); see obx_qb_vector_brute_force_max_candidates().
+    QueryBuilderBase& vectorBruteForceMaxCandidates(uint32_t value) {
+        internal::checkErrOrThrow(obx_qb_vector_brute_force_max_candidates(cQueryBuilder_, value));
+        return *this;
+    }
+
+    /// Modifies the nearest neighbor condition added last (power users): with other conditions, the graph search
+    /// explores at most value nodes; overrides the index's value (0: uses it);
+    /// see obx_qb_vector_filtered_search_max_nodes().
+    QueryBuilderBase& vectorFilteredSearchMaxNodes(uint32_t value) {
+        internal::checkErrOrThrow(obx_qb_vector_filtered_search_max_nodes(cQueryBuilder_, value));
         return *this;
     }
 
@@ -2127,21 +2186,51 @@ public:
     /// This requires the vector property to have a HNSW index.
     /// @param vectorProperty the vector property ID of the entity
     /// @param queryVector the query vector; its dimensions should be at least the dimensions of the vector property.
-    /// @param maxResultCount maximum number of objects to return by the ANN condition.
-    ///        Hint: it can also be used as the "ef" HNSW parameter to increase the search quality in combination with a
-    ///        query limit.
-    ///        For example, use 100 here with a query limit of 10 to have 10 results that are of potentially better
-    ///        quality than just passing in 10 here (quality/performance tradeoff).
+    /// @param resultCount maximum number of objects to return by the ANN condition; typically the query limit.
+    ///        The search explores a multiple of this count, as defined by the search level (see OBXHnswSearchLevel).
+    ///        To trade search speed for quality, use a search level (vectorSearchLevel() when building the query or
+    ///        Query::setParameterSearchLevel() per search) instead of a larger count with a query limit (the way
+    ///        before 6.0; now, the search explores a multiple of it).
     QueryBuilder& nearestNeighborsFloat32(Property<EntityT, OBXPropertyType_FloatVector> vectorProperty,
-                                          const float* queryVector, size_t maxResultCount) {
-        QueryBuilderBase::nearestNeighborsFloat32(vectorProperty.id(), queryVector, maxResultCount);
+                                          const float* queryVector, size_t resultCount) {
+        QueryBuilderBase::nearestNeighborsFloat32(vectorProperty.id(), queryVector, resultCount);
         return *this;
     }
 
     /// Overload for a std::vector; for details see the pointer-based nearestNeighborsFloat32().
     QueryBuilder& nearestNeighborsFloat32(Property<EntityT, OBXPropertyType_FloatVector> vectorProperty,
-                                          const std::vector<float>& queryVector, size_t maxResultCount) {
-        QueryBuilderBase::nearestNeighborsFloat32(vectorProperty.id(), queryVector.data(), maxResultCount);
+                                          const std::vector<float>& queryVector, size_t resultCount) {
+        QueryBuilderBase::nearestNeighborsFloat32(vectorProperty.id(), queryVector.data(), resultCount);
+        return *this;
+    }
+
+    /// Modifies the nearest neighbor condition added last; see QueryBuilderBase::vectorSearchLevel().
+    QueryBuilder& vectorSearchLevel(OBXHnswSearchLevel level) {
+        QueryBuilderBase::vectorSearchLevel(level);
+        return *this;
+    }
+
+    /// Modifies the nearest neighbor condition added last; see QueryBuilderBase::vectorOversampleFactor().
+    QueryBuilder& vectorOversampleFactor(float value) {
+        QueryBuilderBase::vectorOversampleFactor(value);
+        return *this;
+    }
+
+    /// Modifies the nearest neighbor condition added last; see QueryBuilderBase::vectorRescoreFactor().
+    QueryBuilder& vectorRescoreFactor(float value) {
+        QueryBuilderBase::vectorRescoreFactor(value);
+        return *this;
+    }
+
+    /// Modifies the nearest neighbor condition added last; see QueryBuilderBase::vectorBruteForceMaxCandidates().
+    QueryBuilder& vectorBruteForceMaxCandidates(uint32_t value) {
+        QueryBuilderBase::vectorBruteForceMaxCandidates(value);
+        return *this;
+    }
+
+    /// Modifies the nearest neighbor condition added last; see QueryBuilderBase::vectorFilteredSearchMaxNodes().
+    QueryBuilder& vectorFilteredSearchMaxNodes(uint32_t value) {
+        QueryBuilderBase::vectorFilteredSearchMaxNodes(value);
         return *this;
     }
 
@@ -2274,6 +2363,60 @@ public:
 
     QueryBase& setParameter(obx_schema_id entityId, obx_schema_id propertyId, int64_t value) {
         internal::checkErrOrThrow(obx_query_param_int(cQuery_, entityId, propertyId, value));
+        return *this;
+    }
+
+    /// For a nearest neighbor search: sets the search level, the preferred way to trade search speed for quality
+    /// (recall); replaces the previously set oversample and rescore parameters. See OBXHnswSearchLevel and
+    /// obx_query_param_vector_search_level().
+    QueryBase& setParameterSearchLevel(obx_schema_id entityId, obx_schema_id propertyId, OBXHnswSearchLevel level) {
+        internal::checkErrOrThrow(obx_query_param_vector_search_level(cQuery_, entityId, propertyId, level));
+        return *this;
+    }
+
+    /// For a nearest neighbor search (power users; prefer a search level): sets how many candidates are explored per
+    /// result, independent of quantization; see obx_query_param_vector_oversample_factor().
+    QueryBase& setParameterOversampleFactor(obx_schema_id entityId, obx_schema_id propertyId, float value) {
+        internal::checkErrOrThrow(obx_query_param_vector_oversample_factor(cQuery_, entityId, propertyId, value));
+        return *this;
+    }
+
+    /// For a nearest neighbor search with quantization (power users; prefer a search level): sets the oversample
+    /// factor correcting for the quantization error; see obx_query_param_vector_quantization_oversample().
+    QueryBase& setParameterQuantizationOversample(obx_schema_id entityId, obx_schema_id propertyId, float value) {
+        internal::checkErrOrThrow(obx_query_param_vector_quantization_oversample(cQuery_, entityId, propertyId, value));
+        return *this;
+    }
+
+    /// For a nearest neighbor search with quantization (power users; prefer a search level): sets whether the
+    /// candidates are rescored with the exact vectors; see obx_query_param_vector_rescore().
+    QueryBase& setParameterRescore(obx_schema_id entityId, obx_schema_id propertyId, bool value) {
+        internal::checkErrOrThrow(obx_query_param_vector_rescore(cQuery_, entityId, propertyId, value));
+        return *this;
+    }
+
+    /// For a nearest neighbor search with quantization (power users; prefer a search level): sets how many candidates
+    /// are rescored (non-zero also turns rescoring on); see obx_query_param_vector_rescore_factor().
+    QueryBase& setParameterRescoreFactor(obx_schema_id entityId, obx_schema_id propertyId, float value) {
+        internal::checkErrOrThrow(obx_query_param_vector_rescore_factor(cQuery_, entityId, propertyId, value));
+        return *this;
+    }
+
+    /// For a nearest neighbor search with other conditions (power users): sets up to how many candidates the nearest
+    /// neighbors are found by brute force; overrides the index's value (0: uses it);
+    /// see obx_query_param_vector_brute_force_max_candidates().
+    QueryBase& setParameterBruteForceMaxCandidates(obx_schema_id entityId, obx_schema_id propertyId, uint32_t value) {
+        internal::checkErrOrThrow(
+            obx_query_param_vector_brute_force_max_candidates(cQuery_, entityId, propertyId, value));
+        return *this;
+    }
+
+    /// For a nearest neighbor search with other conditions (power users): sets how many nodes the graph search
+    /// explores at most; overrides the index's value (0: uses it);
+    /// see obx_query_param_vector_filtered_search_max_nodes().
+    QueryBase& setParameterFilteredSearchMaxNodes(obx_schema_id entityId, obx_schema_id propertyId, uint32_t value) {
+        internal::checkErrOrThrow(
+            obx_query_param_vector_filtered_search_max_nodes(cQuery_, entityId, propertyId, value));
         return *this;
     }
 };
@@ -2505,6 +2648,68 @@ public:
     Query& setParameterMaxNeighbors(Property<PropertyEntityT, OBXPropertyType_FloatVector> property,
                                     int64_t maxNeighborCount) {
         QueryBase::setParameter(entityId<PropertyEntityT>(), property.id(), maxNeighborCount);
+        return *this;
+    }
+
+    /// For a nearest neighbor search: sets the search level, the preferred way to trade search speed for quality
+    /// (recall); replaces the previously set oversample and rescore parameters. See OBXHnswSearchLevel.
+    template <typename PropertyEntityT>
+    Query& setParameterSearchLevel(Property<PropertyEntityT, OBXPropertyType_FloatVector> property,
+                                   OBXHnswSearchLevel level) {
+        QueryBase::setParameterSearchLevel(entityId<PropertyEntityT>(), property.id(), level);
+        return *this;
+    }
+
+    /// For a nearest neighbor search (power users; prefer a search level): sets how many candidates are explored per
+    /// result, independent of quantization; see obx_query_param_vector_oversample_factor().
+    template <typename PropertyEntityT>
+    Query& setParameterOversampleFactor(Property<PropertyEntityT, OBXPropertyType_FloatVector> property, float value) {
+        QueryBase::setParameterOversampleFactor(entityId<PropertyEntityT>(), property.id(), value);
+        return *this;
+    }
+
+    /// For a nearest neighbor search with quantization (power users; prefer a search level): sets the oversample
+    /// factor correcting for the quantization error; see obx_query_param_vector_quantization_oversample().
+    template <typename PropertyEntityT>
+    Query& setParameterQuantizationOversample(Property<PropertyEntityT, OBXPropertyType_FloatVector> property,
+                                              float value) {
+        QueryBase::setParameterQuantizationOversample(entityId<PropertyEntityT>(), property.id(), value);
+        return *this;
+    }
+
+    /// For a nearest neighbor search with quantization (power users; prefer a search level): sets whether the
+    /// candidates are rescored with the exact vectors; see obx_query_param_vector_rescore().
+    template <typename PropertyEntityT>
+    Query& setParameterRescore(Property<PropertyEntityT, OBXPropertyType_FloatVector> property, bool value) {
+        QueryBase::setParameterRescore(entityId<PropertyEntityT>(), property.id(), value);
+        return *this;
+    }
+
+    /// For a nearest neighbor search with quantization (power users; prefer a search level): sets how many candidates
+    /// are rescored (non-zero also turns rescoring on); see obx_query_param_vector_rescore_factor().
+    template <typename PropertyEntityT>
+    Query& setParameterRescoreFactor(Property<PropertyEntityT, OBXPropertyType_FloatVector> property, float value) {
+        QueryBase::setParameterRescoreFactor(entityId<PropertyEntityT>(), property.id(), value);
+        return *this;
+    }
+
+    /// For a nearest neighbor search with other conditions (power users): sets up to how many candidates the nearest
+    /// neighbors are found by brute force; overrides the index's value (0: uses it);
+    /// see obx_query_param_vector_brute_force_max_candidates().
+    template <typename PropertyEntityT>
+    Query& setParameterBruteForceMaxCandidates(Property<PropertyEntityT, OBXPropertyType_FloatVector> property,
+                                               uint32_t value) {
+        QueryBase::setParameterBruteForceMaxCandidates(entityId<PropertyEntityT>(), property.id(), value);
+        return *this;
+    }
+
+    /// For a nearest neighbor search with other conditions (power users): sets how many nodes the graph search
+    /// explores at most; overrides the index's value (0: uses it);
+    /// see obx_query_param_vector_filtered_search_max_nodes().
+    template <typename PropertyEntityT>
+    Query& setParameterFilteredSearchMaxNodes(Property<PropertyEntityT, OBXPropertyType_FloatVector> property,
+                                              uint32_t value) {
+        QueryBase::setParameterFilteredSearchMaxNodes(entityId<PropertyEntityT>(), property.id(), value);
         return *this;
     }
 

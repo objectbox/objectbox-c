@@ -3,7 +3,6 @@
 #pragma once
 
 #ifdef __cplusplus
-#include <cstdbool>
 #include <cstdint>
 extern "C" {
 #else

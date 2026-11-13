@@ -3,9 +3,9 @@
 ObjectBox C and C++ API Changelog
 =================================
 
-6.0.0-beta2 (2026-09-29)
------------------------
-Lead feature: P2P Mesh Sync
+6.0.0-rc (2026-11-13)
+---------------------
+Lead features: huge vector search improvements, P2P Mesh Sync
 
 * WebAssembly (WASM): the library is now built as part of releases;
   also updated the Emscripten toolchain, reducing the binary size significantly
@@ -22,10 +22,57 @@ Lead feature: P2P Mesh Sync
   * String vector query condition `contains()`: use `containsElement()` instead
   * `Sync::client(store, url, credentials)`: use the builder instead,
     e.g. `Sync::client(store).url(url).credentials(credentials).build()`
-* Closing a store with an open transaction created in the same thread is more robust now:
-  the transaction gets aborted with a warning instead of entering an infinite loop state
-  (note that this is still a programming error and should be avoided in the first place) 
+* Closing a store with an open transaction created in the same thread now aborts the transaction with a warning
+  instead of entering an infinite loop (still a programming error to avoid)
+* New query parameter setters for flex key/value conditions with int and double values:
+  `obx_query_param_key_value_int()`, `obx_query_param_key_value_double()` and their alias variants
 * Internal fixes and improvements
+
+### Vector search
+
+* Vector quantization with TurboQuant enables much faster searches while preserving quality
+  * TurboQuant4 (TQ4) is the new default for HNSW in-memory vectors: 1/8 of the memory of full-precision (f32) vectors,
+    i.e. 8x the vectors fit in the same memory
+  * The persisted vectors remain f32: changing the quantization requires no data migration and no re-indexing
+  * Faster searches at the same recall (0.9-0.99): 1.5-2.4x on MNIST (784 dimensions), NYTimes (256) and
+    DBpedia OpenAI embeddings (1536); about the same (0.9-1.25x) on lower dimensions like SIFT (128) and GloVe (100)
+  * Faster index builds: 1.3-2.9x, growing with the dimensions
+  * Searches rescore with f32 vectors (from search level 4 on), so the results keep exact distances
+  * Other quantization types (`OBXHnswQuantType`): ScalarQuant8 (SQ8, 1/4 of the f32 memory; the most accurate
+    estimates; for low to medium dimensions) and TurboQuant with 1, 1.5, 2 and 3 bits (to save memory at high
+    dimensions)
+* Faster vector search without quantization: 1.2-2.8x the search speed of ObjectBox 5.3.2 (same parameters and recall);
+  also faster index builds (e.g. 1.9x for GloVe)
+* Simplified vector search configuration: instead of tuning HNSW parameters like M, efConstruction and ef yourself,
+  choose one of 10 levels from fast to high quality (recall), handpicked from benchmarks on several public datasets
+  * Search levels (`OBXHnswSearchLevel`): trade search speed for quality per query (`obx_qb_vector_search_level()`,
+    `obx_query_param_vector_search_level()`) or per index (`obx_model_property_index_hnsw_search_level()`;
+    default: `OBXHnswSearchLevel_L4_Balanced`)
+  * Build levels (`OBXHnswBuildLevel`, `obx_model_property_index_hnsw_build_level()`): trade indexing time and memory
+    for graph quality; for data that does not reach your recall target at the highest search levels
+  * The individual parameters remain available for fine-tuning; new are oversampling and rescoring,
+    per query (e.g. `obx_query_param_vector_rescore_factor()`) and
+    per index (e.g. `obx_model_property_index_hnsw_quantization_rescore_factor()`)
+  * C++: `QueryBuilder::vectorSearchLevel()`, `Query::setParameterSearchLevel()` and matching setters for the
+    individual parameters
+* Late init for HNSW indexes with dimensions (and other parameters) known only at runtime,
+  e.g. if the embedding model is chosen at runtime: flag the index in the model (`OBXHnswFlags_LateInit`) and
+  set its parameters after opening the store with `obx_store_hnsw_index_init()` (C++: `Store::initHnswIndex()`);
+  they are persisted and can be changed later (e.g. for another embedding model)
+* Nearest neighbor search with other conditions (filters) now returns the nearest among the matching objects
+  (previously: the nearest of all objects, of which only the matching ones remained, often fewer than requested).
+  Few candidates are searched by brute force; otherwise, the graph search accepts only matching objects.
+  Both limits are tunable per index and per query (C and C++), e.g.
+  `obx_model_property_index_hnsw_brute_force_max_candidates()` (default: 10,000 candidates) and
+  `obx_model_property_index_hnsw_filtered_search_max_nodes()` (default: 25,000 explored nodes)
+* The default indexing search count (efConstruction) is now 128 instead of 100,
+  e.g. on NYTimes: 1.55x the search speed at a recall of 0.9, and a maximum recall of 0.960 instead of 0.947.
+  Existing indexes keep their value (unless specified) and are not re-indexed.
+* Faster removal of objects from HNSW indexes at similar search quality: 7-45x the speed of ObjectBox 5.3.2
+  (e.g. with TQ4 per removal: MNIST 1.4 -> 0.19 ms, NYTimes 16.9 -> 0.38 ms)
+* Reproducible HNSW graph builds, e.g. for tests: `obx_model_property_index_hnsw_random_seed()` seeds the random
+  levels of new nodes (default: a random seed)
+* **Breaking:** removed `OBXHnswFlags_ReparationLimitCandidates` (removals are fast now; the flag is ignored if set)
 
 ### Sync
 
@@ -34,6 +81,15 @@ Lead feature: P2P Mesh Sync
     access the running mesh via `obx_sync_mesh()` and `obx_mesh_*()`
   * C++: new `MeshOptions` and `Mesh` classes, `SyncBuilder::mesh()` and `SyncClient::mesh()`
   * Allows other ObjectBox bindings like Swift to integrate their platform to implement mesh sync
+* New resync: reconciles a client with the server while keeping local data and only transferring the differences
+  (compares object IDs and content hashes; requires a server supporting sync protocol V12)
+  * C: `obx_sync_resync()`; C++: `SyncClient::requestResync()`
+  * Advanced tuning (typically not needed): `obx_sync_opt_resync_assumed_changes()` and
+    `obx_sync_resync_assumed_changes()`; C++: `SyncBuilder::resyncAssumedChanges()` and
+    `SyncClient::setResyncAssumedChanges()`
+* Changed sync filters (e.g. changed filter variables) now resync instead of resetting the client's data
+  (V12 servers); `obx_sync_filter_variables_apply()` reconnects to apply changed variables
+* C++: new `SyncClient::requestFullSync()` (wraps `obx_sync_full()`)
 * C++: fixed `SyncClient::removeFilterVariable()` removing all filter variables instead of the given one
 * C++: fixed registering a `SyncClientErrorListener` (the error callback was bound to the wrong listener object)
 
@@ -45,7 +101,7 @@ Lead feature: P2P Mesh Sync
 5.3.1 (2026-03-26)
 ------------------
 * Critical fix for sync clock handling without preset clock values (null)
-* Helper functions to extract timestamps from sync clock values 
+* Helper functions to extract timestamps from sync clock values
 
 5.3.0 (2026-03-23)
 ------------------

@@ -2,7 +2,6 @@
 
 #pragma once
 
-#include <cstdbool>
 #include <cstdint>
 
 #include "flatbuffers/flatbuffers.h"

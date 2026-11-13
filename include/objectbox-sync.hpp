@@ -602,7 +602,8 @@ public:
     void removeFilterVariable(const std::string& name) { removeFilterVariable(name.c_str()); }
 
     /// Applies all pending filter variable updates (from put/remove filter variables calls).
-    /// If the client is connected, sends the updated variables to the server.
+    /// If the client is connected and the variables changed, it reconnects to apply them,
+    /// which re-syncs its data according to the new variables (objects not changed are kept).
     /// If the client is not connected, the updated variables will be included in the next login message.
     void applyFilterVariables() {
         obx_err err = obx_sync_filter_variables_apply(cPtr());
@@ -664,6 +665,23 @@ public:
     /// Cancel updates from the server so that it will stop sending updates.
     /// @see updatesRequest()
     bool cancelUpdates() { return internal::checkSuccessOrThrow(obx_sync_updates_cancel(cPtr())); }
+
+    /// Experimental. Requests a full sync: brings the database up-to-date in a single transaction, without transmitting
+    /// all the history. See obx_sync_full() for details.
+    /// @returns true if the request was likely sent; false if it was not sent (e.g. the sync client is not logged in).
+    bool requestFullSync() { return internal::checkSuccessOrThrow(obx_sync_full(cPtr())); }
+
+    /// Requests a resync with the server: like a full sync, but keeps local data and only transfers the differences.
+    /// Falls back to a full sync if the server does not support resync. See obx_sync_resync() for details.
+    /// @returns true if the resync was requested; false if the sync client is not logged in.
+    bool requestResync() { return internal::checkSuccessOrThrow(obx_sync_resync(cPtr())); }
+
+    /// Sets the estimated number of objects that differ between the client and the server for resyncs (> 0; 200 by
+    /// default). See obx_sync_resync_assumed_changes() for details.
+    /// Note: this is an advanced optimization, which users typically do not need to set.
+    void setResyncAssumedChanges(uint32_t count) {
+        internal::checkErrOrThrow(obx_sync_resync_assumed_changes(cPtr(), count));
+    }
 
     /// Count the number of messages in the outgoing queue, i.e. those waiting to be sent to the server.
     /// Note: This call uses a (read) transaction internally: 1) it's not just a "cheap" return of a single number.
@@ -1036,6 +1054,14 @@ public:
     /// Combine multiple flags using bitwise OR.
     SyncBuilder& flags(uint32_t flags) {
         internal::checkErrOrThrow(obx_sync_opt_flags(opt_, flags));
+        return *this;
+    }
+
+    /// Sets the initial estimated number of objects that differ between the client and the server for resyncs
+    /// (> 0; 200 by default). See obx_sync_resync_assumed_changes() for details.
+    /// Note: this is an advanced optimization, which users typically do not need to set.
+    SyncBuilder& resyncAssumedChanges(uint32_t count) {
+        internal::checkErrOrThrow(obx_sync_opt_resync_assumed_changes(opt_, count));
         return *this;
     }
 
